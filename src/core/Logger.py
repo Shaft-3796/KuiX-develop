@@ -10,6 +10,7 @@ import os
 
 
 # --- Log types and data ---
+TRACE = "TRACE"
 INFO = "INFO"
 WARNING = "WARNING"
 ERROR = "ERROR"
@@ -21,9 +22,9 @@ class LogTypes:
     """
     Used by the logger to color the logs
     """
-    __type_header_color__ = {INFO: f"{C.BOLD}{C.BGREEN}{C.BLACK}", WARNING: f"{C.BOLD}{C.BYELLOW}{C.BLACK}",
-                             ERROR: f"{C.BOLD}{C.BRED}{C.BLACK}", DEBUG: f"{C.BOLD}{C.BCYAN}{C.BLACK}"}
-    __type_body_color__ = {INFO: f"{C.END}{C.GREEN}", WARNING: f"{C.END}{C.YELLOW}", ERROR: f"{C.END}{C.RED}",
+    __type_header_color__ = {TRACE: f"{C.END}", INFO: f"{C.BOLD}{C.BGREEN}{C.BLACK}", WARNING: f"{C.BOLD}{C.BYELLOW}{C.BLACK}",
+                             ERROR: f"{C.BOLD}{C.BRED}{C.BLACK}", DEBUG: f"{C.BOLD}{C.BCYAN}{C.BLACK}",}
+    __type_body_color__ = {TRACE: f"{C.END}", INFO: f"{C.END}{C.GREEN}", WARNING: f"{C.END}{C.YELLOW}", ERROR: f"{C.END}{C.RED}",
                            DEBUG: f"{C.END}{C.MAGENTA}"}
 
 
@@ -47,6 +48,7 @@ class Logger:
         """
         # PLACEHOLDER
         self.log_path = None
+        self.verbose = False
         self.lock = multiprocessing.Lock()
 
     # Call to enable file logging
@@ -68,6 +70,13 @@ class Logger:
             print("KXT Error: Logger could not be initialized, exiting...")
             raise e
 
+    # Enable verbose mode to log TRACE to the console
+    def enable_verbose(self):
+        """
+        Call this method to enable verbose mode, this will log TRACE to the console
+        """
+        self.verbose = True
+
     # --- Core ---
     def log(self, data: str, log_type: str, route: str):
         """
@@ -76,6 +85,9 @@ class Logger:
         :param log_type: Type of the log (INFO, WARNING, ERROR, DEBUG)
         :param route: Route of the log (CORE, CORE_COMP, STRATEGY, STRATEGY_COMP)
         """
+        # Pre check for verbose mode
+        if not self.verbose and log_type == TRACE:
+            return
         with self.lock:
             color_header = LogTypes.__type_header_color__[log_type]
             color_body = LogTypes.__type_body_color__[log_type]
@@ -89,7 +101,7 @@ class Logger:
 
             # Logging
             print(_log + '\n', end='')
-            if self.log_path is not None:
+            if self.log_path is not None and log_type != TRACE:
                 for retry in range(3):
                     try:
                         with open(f"{self.log_path}/{route}_{log_type}.log", "a") as f:
@@ -122,6 +134,14 @@ class Logger:
         self.log_exception(exception, route)
 
     # --- SHORTCUTS ---
+    def trace(self, data: str, route: str):
+        """
+        Shortcut to directly log data as a TRACE log
+        :param data: data of the log
+        :param route: data of the log
+        """
+        self.log(data, TRACE, route)
+
     def info(self, data: str, route: str):
         """
         Shortcut to directly log data as an INFO log

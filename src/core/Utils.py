@@ -6,7 +6,7 @@ from dataclasses import dataclass
 import traceback as tba
 
 # EOF character for socket communication
-EOF = "04"
+EOT = "04"
 
 
 # Terminal colors
