@@ -7,6 +7,8 @@ import traceback as tba
 
 # EOF character for socket communication
 EOT = "04"
+# Message sent to test if a socket connection is still alive
+IGNORE = b"PING_TEST_TO_BE_IGNORED"
 
 
 # Terminal colors
