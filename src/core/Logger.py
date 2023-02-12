@@ -94,7 +94,7 @@ class Logger:
             log_time = time.strftime("%d-%m-%y %H:%M:%S")
 
             # One line log
-            _log = f"[{color_header}{log_time}] {log_type} from {route}: {color_body}{data}{C.END}"
+            _log = f"{color_header}[{log_time}] {log_type} from {route}: {color_body}{data}{C.END}"
 
             # JSON log
             json_log = json.dumps({"time": log_time, "type": log_type, "route": route, "data": data})

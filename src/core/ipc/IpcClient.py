@@ -1,5 +1,5 @@
 """
-This module implements an IPC server using sockets.
+This module implements an IPC client using sockets.
 
 Communication protocol:
 
@@ -12,7 +12,7 @@ I-) FireAndForget request:
 II-) Blocking request:
     1) Client or server sends a request to an endpoint of the other party, the sender add a unique id to the request.
     2) Client or server locks on a new semaphore.
-    3) The other party processes the request and send the response on the id as endpoint.
+    3) The other party processes the request and send the response with a "rid" field.
     4) Client or server socket threads unlock the semaphore.
     5) Client or server request call unlocks and return the response
     request = {rtype: "BLOCKING", endpoint: "endpoint", data: {...}, rid: "unique_id"}
@@ -24,7 +24,7 @@ III-) Response:
     4) Client or server initial blocking request call return the response.
     request = {rtype: "RESPONSE", endpoint: "endpoint", data: {...}, rid: "unique_id"}
 """
-from src.core.networking.SocketServer import SocketServer
+from src.core.networking.SocketClient import SocketClient
 from src.core.Utils import Endpoint, BlockingEndpoint
 from src.core.Logger import LOGGER, CORE
 import threading
@@ -38,13 +38,13 @@ BLOCKING = "BLOCKING"
 RESPONSE = "RESPONSE"
 
 
-class IpcServer(SocketServer):
+class IpcClient(SocketClient):
 
-    def __init__(self, auth_key: str, host: str = "localhost", port: int = 6969,
+    def __init__(self, identifier: str, auth_key: str, host: str = "localhost", port: int = 6969,
                  artificial_latency: float = 0.1):
         # Super call
-        super().__init__(auth_key, host, port, artificial_latency)
-        self.accept_new_connections()
+        super().__init__(identifier, auth_key, host, port, artificial_latency)
+        self.connect()
 
         # Placeholder for endpoints
         self.endpoints = {}  # type dict[str, Callable]
@@ -70,11 +70,11 @@ class IpcServer(SocketServer):
             if request["rtype"] == FIRE_AND_FORGET or request["rtype"] == BLOCKING:
                 ep = self.endpoints if request["rtype"] == FIRE_AND_FORGET else self.blocking_endpoints
                 if request["endpoint"] not in ep:
-                    LOGGER.warning(f"IPC Server: received unknown endpoint '{request['endpoint']}' from {identifier}",
+                    LOGGER.warning(f"IPC Client {identifier}: received unknown endpoint '{request['endpoint']}'",
                                    CORE)
                     return
-                ep[request["endpoint"]](identifier, request["data"]) if request["rtype"] == FIRE_AND_FORGET \
-                    else ep[request["endpoint"]](identifier, request["rid"], request["data"])
+                ep[request["endpoint"]](request["data"]) if request["rtype"] == FIRE_AND_FORGET \
+                    else ep[request["endpoint"]](request["rid"], request["data"])
 
             # Response request
             elif request["rtype"] == RESPONSE:
@@ -82,43 +82,43 @@ class IpcServer(SocketServer):
                     if request["rid"] not in self.blocking_requests:
                         time.sleep(0.2)
                 if request["rid"] not in self.blocking_requests:
-                    LOGGER.warning(f"IPC Server: received unknown rid, endpoint '{request['endpoint']}' from "
-                                   f"{identifier}\nRequest: {request}", CORE)
+                    LOGGER.warning(f"IPC Client {identifier}: received unknown rid, endpoint '{request['endpoint']}'"
+                                   f"\nRequest: {request}", CORE)
                     return
                 self.blocking_requests[request["rid"]][1] = request["data"]
                 self.blocking_requests[request["rid"]][0].release()
 
             # Unknown request type
             else:
-                LOGGER.warning(f"IPC Server: received unknown request type: {request['rtype']} from {identifier}",
+                LOGGER.warning(f"IPC Client {identifier}: received unknown request type: {request['rtype']}",
                                CORE)
 
         except Exception as e:
-            LOGGER.error(f"IPC Server: error while handling request from {identifier}: {e}", CORE)
+            LOGGER.error(f"IPC Client {identifier}: error while handling request: {e}", CORE)
 
     # --- Endpoints ---
     @Endpoint("ping")
-    def ping(self, identifier: str, request: dict):
-        LOGGER.trace(f"IPC Server {identifier} : ping received from {identifier}", CORE)
+    def ping(self, request: dict):
+        LOGGER.trace(f"IPC Client {self.identifier}: ping received", CORE)
 
     # --- Blocking endpoints ---
     @BlockingEndpoint("blocking_ping")
-    def blocking_ping(self, identifier: str, rid: str, request: dict):
-        LOGGER.trace(f"IPC Server {identifier} : blocking ping received from {identifier}", CORE)
-        self.send_response("blocking_ping", identifier, {"response": "pong"}, rid)
+    def blocking_ping(self, rid: str, request: dict):
+        LOGGER.trace(f"IPC Client {self.identifier}: blocking ping received", CORE)
+        self.send_response("blocking_ping", {"response": "pong"}, rid)
 
     # --- Sending ---
 
     # Fire and forget
-    def send_fire_and_forget_request(self, identifier: str, endpoint: str, data: dict):
+    def send_fire_and_forget_request(self, endpoint: str, data: dict):
         try:
-            self.send_data(identifier, {"rtype": FIRE_AND_FORGET, "endpoint": endpoint, "data": data})
+            self.send_data({"rtype": FIRE_AND_FORGET, "endpoint": endpoint, "data": data})
         except Exception as e:
-            e.add_traceback("IpcServer, send fire and forget")
+            e.add_traceback("IpcClient, send fire and forget")
             raise e
 
     # blocking request
-    def send_blocking_request(self, identifier: str, endpoint: str, data: dict):
+    def send_blocking_request(self, endpoint: str, data: dict):
         try:
             # Create a unique id for the request
             rid = str(uuid.uuid4())
@@ -129,7 +129,7 @@ class IpcServer(SocketServer):
             # Fill the response placeholder
             self.blocking_requests[rid] = [semaphore, response]
             # Send the request
-            self.send_data(identifier, {"rtype": BLOCKING, "endpoint": endpoint, "data": data, "rid": rid})
+            self.send_data({"rtype": BLOCKING, "endpoint": endpoint, "data": data, "rid": rid})
             # Wait for the response
             semaphore.acquire()
             # Return the response
@@ -137,15 +137,15 @@ class IpcServer(SocketServer):
             del self.blocking_requests[rid]
             return resp
         except Exception as e:
-            e.add_traceback("IpcServer, send blocking request")
+            e.add_traceback("IpcClient, send blocking request")
             raise e
 
     # responses
-    def send_response(self, identifier: str, endpoint: str, data: dict, rid: str):
+    def send_response(self, endpoint: str, data: dict, rid: str):
         try:
-            self.send_data(identifier, {"rtype": RESPONSE, "endpoint": endpoint, "data": data, "rid": rid})
+            self.send_data({"rtype": RESPONSE, "endpoint": endpoint, "data": data, "rid": rid})
         except Exception as e:
-            e.add_traceback("IpcServer, send response")
+            e.add_traceback("IpcClient, send response")
             raise e
 
 

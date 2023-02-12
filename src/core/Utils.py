@@ -50,6 +50,7 @@ def nonblocking(static_identifier: str = None):
     :return: the wrapped function
     :rtype: callable
     """
+
     def dynamic_nonblocking(func):
         def wrapper(thread_identifier, *args, **kwargs):
             thread = threading.Thread(target=func, args=args, kwargs=kwargs, name=thread_identifier)
@@ -92,15 +93,32 @@ class KXException(Exception):
         """
         self.messages_traceback.append(message)
 
+
 # Decorator to register a function as an endpoint by adding a special attribute to it
-def endpoint(_endpoint: str):
+def Endpoint(_endpoint: str):
     """
     Decorator to register a function as an endpoint by adding a special attribute to it
     :param _endpoint: name of the endpoint
     :return:
     """
+
     def decorator(function):
-        function.__setattr__("api_endpoint", _endpoint)
+        function.__setattr__("faf_endpoint", _endpoint)
+        return function
+
+    return decorator
+
+
+# Decorator to register a function as a blocking endpoint by adding a special attribute to it
+def BlockingEndpoint(_endpoint: str):
+    """
+    Decorator to register a function as an endpoint by adding a special attribute to it
+    :param _endpoint: name of the endpoint
+    :return:
+    """
+
+    def decorator(function):
+        function.__setattr__("blocking_endpoint", _endpoint)
         return function
 
     return decorator
