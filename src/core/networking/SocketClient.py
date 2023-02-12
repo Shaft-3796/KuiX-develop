@@ -12,7 +12,7 @@ import json
 import time
 
 
-class IPCClient:
+class SocketClient:
     """
     Implementation of a custom socket server used for IPC (Inter Process Communication).
     """

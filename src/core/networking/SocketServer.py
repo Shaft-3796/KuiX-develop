@@ -5,14 +5,14 @@ import select
 import threading
 from typing import Callable
 
-from src.core.Logger import LOGGER, INFO, WARNING, TRACE, CORE
+from src.core.Logger import LOGGER, INFO, WARNING, TRACE, CORE, KXException
 from src.core.Utils import nonblocking, EOT, IGNORE
 import socket
 import json
 import time
 
 
-class IPCServer:
+class SocketServer:
     """
     Implementation of a custom socket server used for IPC (Inter Process Communication).
     """
@@ -48,6 +48,7 @@ class IPCServer:
         self.connections = {}
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self.socket.settimeout(0.2)
         self.socket.bind((self.host, self.port))
         self.socket.listen()
 
@@ -93,6 +94,12 @@ class IPCServer:
                     connection.sendall(json.dumps({"status": "invalid"}).encode("utf-8"))
                     connection.close()
                     self.__trigger__(self.on_connection_refused, authentication_payload["identifier"])
+            except socket.timeout:
+                # Expected exception, just ignore it
+                pass
+            except OSError:
+                # Expected exception, just ignore it
+                pass
             except Exception as e:
                 LOGGER.warning(f"IPC Server: Error while listening for new connections: {e}, "
                                f"probably bad request format", CORE)
@@ -199,7 +206,7 @@ class IPCServer:
             LOGGER.trace(f"IPC Server: Sent data to connection {identifier}: {data}", CORE)
             self.__trigger__(self.on_message_sent, identifier, data)
         except Exception as e:
-            LOGGER.dump_exception(e, CORE, f"IPC Server: Exception while sending data to connection {identifier}.")
+            raise KXException(e, f"IPC Server, sending to {identifier}")
 
     # Close the server
     def close(self):

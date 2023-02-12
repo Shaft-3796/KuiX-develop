@@ -91,3 +91,16 @@ class KXException(Exception):
         :param str message:
         """
         self.messages_traceback.append(message)
+
+# Decorator to register a function as an endpoint by adding a special attribute to it
+def endpoint(_endpoint: str):
+    """
+    Decorator to register a function as an endpoint by adding a special attribute to it
+    :param _endpoint: name of the endpoint
+    :return:
+    """
+    def decorator(function):
+        function.__setattr__("api_endpoint", _endpoint)
+        return function
+
+    return decorator

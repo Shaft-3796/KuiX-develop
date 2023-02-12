@@ -2,15 +2,15 @@ import threading
 import time
 
 from src.core.Logger import LOGGER
+from src.core.ipc.IpcServer import IpcServer
 from src.core.networking.SocketClient import SocketClient
-from src.core.networking.SocketServer import SocketServer
 
 LOGGER.enable_verbose()
 
 # --- Test IPC server ---
 
 # Create a server
-server = SocketServer("key")
+server = IpcServer("key")
 
 # Start the server
 server.accept_new_connections()
@@ -30,3 +30,6 @@ client.send_data({"content": "Hello server!"})
 # --- Closing ---
 server.close()
 client.close()
+
+# --- Test IPC server ---
+print("Endpoints: ", server.endpoints)
