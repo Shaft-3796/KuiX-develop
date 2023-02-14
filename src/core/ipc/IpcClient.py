@@ -44,7 +44,11 @@ class IpcClient(SocketClient):
                  artificial_latency: float = 0.1):
         # Super call
         super().__init__(identifier, auth_key, host, port, artificial_latency)
-        self.connect()
+        try:
+            self.connect()
+        except Exception as e:
+            # KXException
+            raise e
 
         # Placeholder for endpoints
         self.endpoints = {}  # type dict[str, Callable]

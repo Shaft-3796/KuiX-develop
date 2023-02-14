@@ -5,7 +5,7 @@ import select
 import threading
 from typing import Callable
 
-from src.core.Logger import LOGGER, INFO, WARNING, TRACE, CORE
+from src.core.Logger import LOGGER, INFO, WARNING, TRACE, CORE, KXException
 from src.core.Utils import nonblocking, EOT, IGNORE
 import socket
 import json
@@ -82,7 +82,7 @@ class SocketClient:
                 LOGGER.trace(f"IPC Client {self.identifier}: Server invalidated creds: ", CORE)
                 self.__trigger__(self.on_connection_refused, authentication_payload["identifier"])
         except Exception as e:
-            LOGGER.warning(f"IPC Client {self.identifier}: Error while connecting and authenticating client: {e}", CORE)
+            raise KXException(e, f"SocketClient.connect() on {self.host}:{self.port} failed.")
 
     # Blocking call, handle requests from the server
     def listen_for_connection(self):
