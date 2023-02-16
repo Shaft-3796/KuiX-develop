@@ -1,13 +1,13 @@
 """
 This file contains the logging system of KuiX
 """
-from src.core.Utils import C, KXException
+from src.core.Exceptions import GenericException
+from src.core.Utils import C
 from dataclasses import dataclass
 import multiprocessing
 import json
 import time
 import os
-
 
 # --- Log types and data ---
 TRACE = "TRACE"
@@ -22,9 +22,11 @@ class LogTypes:
     """
     Used by the logger to color the logs
     """
-    __type_header_color__ = {TRACE: f"{C.END}", INFO: f"{C.BOLD}{C.BGREEN}{C.BLACK}", WARNING: f"{C.BOLD}{C.BYELLOW}{C.BLACK}",
-                             ERROR: f"{C.BOLD}{C.BRED}{C.BLACK}", DEBUG: f"{C.BOLD}{C.BCYAN}{C.BLACK}",}
-    __type_body_color__ = {TRACE: f"{C.END}", INFO: f"{C.END}{C.GREEN}", WARNING: f"{C.END}{C.YELLOW}", ERROR: f"{C.END}{C.RED}",
+    __type_header_color__ = {TRACE: f"{C.END}", INFO: f"{C.BOLD}{C.BGREEN}{C.BLACK}",
+                             WARNING: f"{C.BOLD}{C.BYELLOW}{C.BLACK}",
+                             ERROR: f"{C.BOLD}{C.BRED}{C.BLACK}", DEBUG: f"{C.BOLD}{C.BCYAN}{C.BLACK}", }
+    __type_body_color__ = {TRACE: f"{C.END}", INFO: f"{C.END}{C.GREEN}", WARNING: f"{C.END}{C.YELLOW}",
+                           ERROR: f"{C.END}{C.RED}",
                            DEBUG: f"{C.END}{C.MAGENTA}"}
 
 
@@ -110,29 +112,6 @@ class Logger:
                     except FileNotFoundError:
                         open(f"{self.log_path}/{route}_{log_type}.log", "w").close()
 
-    def log_exception(self, exception: KXException, route: str):
-        """
-        Format and log a KXException
-        :param exception: the KXException
-        :param route: the route of the log (CORE, CORE_COMP, STRATEGY, STRATEGY_COMP)
-        """
-        self.log(f"KXT: {'->'.join(exception.messages_traceback)}"
-                 f"\nException: {C.ITALIC}{exception.traceback}{C.END}", ERROR, route)
-
-    def dump_exception(self, exception: Exception, route: str, message: str = None):
-        """
-        Directly log anny exception, if the exception is not a KXException it will be converted to one.
-        :param exception: any exception
-        :param route: the route of the log (CORE, CORE_COMP, STRATEGY, STRATEGY_COMP)
-        :param message: the optional message to add to the traceback
-        :return:
-        """
-        if type(exception) == KXException:
-            exception.add_traceback(message)
-        else:
-            exception = KXException(exception, message)
-        self.log_exception(exception, route)
-
     # --- SHORTCUTS ---
     def trace(self, data: str, route: str):
         """
@@ -173,6 +152,38 @@ class Logger:
         :param route: data of the log
         """
         self.log(data, DEBUG, route)
+
+    def warning_exception(self, exception, route: str):
+        """
+        Shortcut to directly log an Exception as a WARNING log
+        :param exception: the Exception
+        :param route: the route of the log (CORE, CORE_COMP, STRATEGY, STRATEGY_COMP)
+        """
+        exception = exception if isinstance(exception, GenericException) else GenericException(exception)
+        data = f"\nException: {C.ITALIC}{exception.traceback}"
+        if exception.notes:
+            # Join all notes
+            data += f"\nNotes:"
+            for note in exception.notes:
+                data += f"\n->\t{note}"
+        data += f"{C.END}"
+        self.log(data, WARNING, route)
+
+    def error_exception(self, exception, route: str):
+        """
+        Shortcut to directly log an Exception as an ERROR log
+        :param exception: the Exception
+        :param route: the route of the log (CORE, CORE_COMP, STRATEGY, STRATEGY_COMP)
+        """
+        exception = exception if isinstance(exception, GenericException) else GenericException(exception)
+        data = f"\nException: {C.ITALIC}{exception.traceback}"
+        if exception.notes:
+            # Join all notes
+            data += f"\nNotes:"
+            for note in exception.notes:
+                data += f"\n->\t{note}"
+        data += f"{C.END}"
+        self.log(data, ERROR, route)
 
 
 # Pre instanced logger

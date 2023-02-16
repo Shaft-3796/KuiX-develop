@@ -5,7 +5,8 @@ import select
 import threading
 from typing import Callable
 
-from src.core.Logger import LOGGER, INFO, WARNING, TRACE, CORE, KXException
+from src.core.Exceptions import *
+from src.core.Logger import LOGGER, INFO, WARNING, TRACE, CORE
 from src.core.Utils import nonblocking, EOT, IGNORE
 import socket
 import json
@@ -27,6 +28,8 @@ class SocketServer:
         :param host (optional): The host to listen on. Default is localhost. We don't recommend changing this.
         :param artificial_latency (optional): Time in s between each .recv call for a connection. Default is 0.1s.
         This is used to prevent the CPU from being overloaded.
+
+        :raise SocketBindError: If the socket cannot be bound to the specified host and port.
         """
         # Args
         self.auth_key = auth_key
@@ -49,7 +52,10 @@ class SocketServer:
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.socket.settimeout(0.2)
-        self.socket.bind((self.host, self.port))
+        try:
+            self.socket.bind((self.host, self.port))
+        except BaseException as e:
+            raise SocketServerBindError(e).add_note("Socket Server binding")
         self.socket.listen()
 
         # To close the IPC server
@@ -58,8 +64,6 @@ class SocketServer:
         self.accepting_new_connections = True
 
         LOGGER.trace(f"IPC Server: server fully instanced on {self.host}:{self.port}", CORE)
-
-    # --- Low level methods ---
 
     # accept new connections from clients until self.accepting_new_connections is set to False
     @nonblocking("ipc_server_new_connection_listener")
@@ -87,22 +91,22 @@ class SocketServer:
                                  f"id: {authentication_payload['identifier']}", CORE)
                     connection.sendall(json.dumps({"status": "valid"}).encode("utf-8"))
                     self.connections[authentication_payload["identifier"]] = connection
-                    self.__trigger__(self.on_connection_accepted, authentication_payload["identifier"])
+                    self.__trigger__(self.on_connection_accepted, identifier=authentication_payload["identifier"])
                 else:
                     # Invalid creds
                     LOGGER.trace(f"IPC Server: Invalid client creds for {address}", CORE)
                     connection.sendall(json.dumps({"status": "invalid"}).encode("utf-8"))
                     connection.close()
-                    self.__trigger__(self.on_connection_refused, authentication_payload["identifier"])
-            except socket.timeout:
+                    self.__trigger__(self.on_connection_refused, identifier=authentication_payload["identifier"])
+            except socket.timeout or OSError:
                 # Expected exception, just ignore it
                 pass
             except OSError:
-                # Expected exception, just ignore it
-                pass
-            except Exception as e:
-                LOGGER.warning(f"IPC Server: Error while listening for new connections: {e}, "
-                               f"probably bad request format", CORE)
+                if not self.accepting_new_connections:
+                    LOGGER.trace(f"IPC Server: Stopped accepting new connections", CORE)
+            except BaseException as e:
+                LOGGER.warning_exception(SocketServerAcceptError(e).add_note("Socket Server error while accepting new "
+                                                                             "connections"), CORE)
 
     # Blocking call, handle requests from a specific connection
     def listen_for_connection(self, identifier: str):
@@ -115,12 +119,13 @@ class SocketServer:
             nonlocal buffer
             LOGGER.trace(f"IPC Server: Flushing buffer for connection {identifier}, buffer: {buffer}", CORE)
             if buffer != IGNORE:
-                self.__trigger__(self.on_message_received, identifier, json.loads(buffer.decode("utf-8")))
+                self.__trigger__(self.on_message_received, identifier=identifier,
+                                 data=json.loads(buffer.decode("utf-8")))
             buffer = b''
 
         # Pre test
         if identifier not in self.connections:
-            LOGGER.error(f"IPC Server: Connection {identifier} not found.", CORE)
+            LOGGER.error(f"Socket Server error while listening connection: Connection {identifier} not found.", CORE)
             return
 
         connection = self.connections[identifier]
@@ -163,29 +168,31 @@ class SocketServer:
                         except socket.error:
                             connection_closed = True
                             break
-                except OSError:
+                except socket.timeout or OSError:
                     connection_closed = True
                     break
-                except Exception as e:
-                    LOGGER.dump_exception(e, CORE, f"IPC Server: Exception while handling connection {identifier}.")
+                except BaseException as e:
+                    LOGGER.warning_exception(SocketServerListeningConnectionError(e).add_note(
+                        f"Socket Server, error while listening connection {identifier}"), CORE)
                     retry += 1
                     if retry > 5:
                         connection_closed = True
-                        LOGGER.warning(f"IPC Server: Connection {identifier}, max retry exceeded.", CORE)
+                        LOGGER.warning(f"Socket Server: Connection {identifier}, max retry exceeded, closing "
+                                       f"connection.", CORE)
                         break
 
             time.sleep(self.artificial_latency)  # Artificial latency for optimization purposes
 
         if connection_closed:
-            LOGGER.trace(f"IPC Server: Connection {identifier} closed by the client.", CORE)
+            LOGGER.info(f"Socket Server: Connection {identifier} closed by the client.", CORE)
             connection.close()
             self.connections.pop(identifier)
-            self.__trigger__(self.on_connection_closed, identifier, False)
+            self.__trigger__(self.on_connection_closed, identifier=identifier, from_server=False)
         else:
-            LOGGER.trace(f"IPC Server: Connection {identifier} closed by server.", CORE)
+            LOGGER.info(f"Socket Server: Connection {identifier} closed by server.", CORE)
             connection.close()
             self.connections.pop(identifier)
-            self.__trigger__(self.on_connection_closed, identifier, True)
+            self.__trigger__(self.on_connection_closed, identifier=identifier, from_server=True)
 
     # Non blocking call, send given data to a specific connection
     def send_data(self, identifier: str, data: dict):
@@ -198,15 +205,17 @@ class SocketServer:
         # Pre test
         if identifier not in self.connections:
             LOGGER.error(f"IPC Server: Connection {identifier} not found.", CORE)
-            return
+            raise SocketServerCliIdentifierNotFound().add_note(f"Socket Server: connection identifier "
+                                                               f"'{identifier}' not found")
 
         connection = self.connections[identifier]
         try:
             connection.sendall(json.dumps(data).encode("utf-8") + bytes([int(EOT, 16)]))
             LOGGER.trace(f"IPC Server: Sent data to connection {identifier}: {data}", CORE)
-            self.__trigger__(self.on_message_sent, identifier, data)
-        except Exception as e:
-            raise KXException(e, f"IPC Server, sending to {identifier}")
+            self.__trigger__(self.on_message_sent, identifier=identifier, data=data)
+        except BaseException as e:
+            raise SocketServerSendError(e).add_note("Socket Server, error while sending data to connection '{"
+                                                    "identifier}'")
 
     # Close the server
     def close(self):
@@ -215,12 +224,16 @@ class SocketServer:
         """
         self.accepting_new_connections = False
         self.ipc_server_closed = True
-        self.socket.close()
-        LOGGER.trace(f"IPC Server: Server closed.", CORE)
+        try:
+            self.socket.close()
+        except BaseException as e:
+            raise SocketServerCloseError(e).add_note("Socket Server, error while closing the server")
+        LOGGER.trace(f"Socket Server: Server closed.", CORE)
         self.__trigger__(self.on_server_closed)
 
     # Trigger an event
-    def __trigger__(self, callbacks: list, *args):
+    @staticmethod
+    def __trigger__(callbacks: list, **kwargs):
         """
         Triggers an event.
         :param callback: The callback to trigger.
@@ -229,9 +242,10 @@ class SocketServer:
         """
         for callback in callbacks:
             try:
-                callback(*args)
-            except Exception as e:
-                LOGGER.warning(f"IPC Server: Exception while triggering event: {e}", CORE)
+                callback(**kwargs)
+            except BaseException as e:
+                LOGGER.warning_exception(SocketServerEventCallbackError(e).add_note(
+                    f"Socket Server, error while triggering callback '{callback}' during an event"), CORE)
 
     # --- Shortcuts to register events ---
     def register_on_connection_accepted(self, callback):

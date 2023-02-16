@@ -68,31 +68,6 @@ def nonblocking(static_identifier: str = None):
     return dynamic_nonblocking if static_identifier is None else static_nonblocking
 
 
-# Base exception for the engine
-class KXException(Exception):
-    """
-    Main and generic exception used by KuiX.
-    Used by the logger, contains a custom traceback.
-    """
-
-    def __init__(self, exception: Exception, traceback: str = None):
-        """
-        Instance a KXException from an exception.
-        :param Exception exception: the caught exception
-        :param traceback: an optional traceback message to be added to the custom traceback
-        """
-        self.type = type(exception).__name__
-        self.message = str(exception)
-        self.messages_traceback = [traceback] if traceback is not None else []
-        self.traceback = tba.format_exc()
-
-    def add_traceback(self, message: str):
-        """
-        Add a message to a custom traceback.
-        :param str message:
-        """
-        self.messages_traceback.append(message)
-
 
 # Decorator to register a function as an endpoint by adding a special attribute to it
 def Endpoint(_endpoint: str):

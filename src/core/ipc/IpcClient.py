@@ -27,6 +27,7 @@ III-) Response:
 from src.core.networking.SocketClient import SocketClient
 from src.core.Utils import Endpoint, BlockingEndpoint
 from src.core.Logger import LOGGER, CORE
+from src.core.Exceptions import *
 import threading
 import time
 import uuid
@@ -46,20 +47,12 @@ class IpcClient(SocketClient):
         super().__init__(identifier, auth_key, host, port, artificial_latency)
         try:
             self.connect()
-        except Exception as e:
-            # KXException
-            raise e
+        except SocketClientConnectionError as e:
+            raise e.add_note(f"Ipc Client '{identifier}' failed to connect to {host}:{port}")
 
         # Placeholder for endpoints
         self.endpoints = {}  # type dict[str, Callable]
         self.blocking_endpoints = {}  # type dict[str, Callable]
-        # Iterating over methods:
-        for method in [getattr(self, method_name) for method_name in dir(self)
-                       if callable(getattr(self, method_name))]:
-            if hasattr(method, "faf_endpoint"):
-                self.endpoints[getattr(method, "faf_endpoint")] = method
-            if hasattr(method, "blocking_endpoint"):
-                self.blocking_endpoints[getattr(method, "blocking_endpoint")] = method
 
         # Placeholder for blocking requests
         self.blocking_requests = {}  # type dict[str: id, list [semaphore, response]]
@@ -97,19 +90,10 @@ class IpcClient(SocketClient):
                 LOGGER.warning(f"IPC Client {identifier}: received unknown request type: {request['rtype']}",
                                CORE)
 
-        except Exception as e:
-            LOGGER.error(f"IPC Client {identifier}: error while handling request: {e}", CORE)
-
-    # --- Endpoints ---
-    @Endpoint("ping")
-    def ping(self, request: dict):
-        LOGGER.trace(f"IPC Client {self.identifier}: ping received", CORE)
-
-    # --- Blocking endpoints ---
-    @BlockingEndpoint("blocking_ping")
-    def blocking_ping(self, rid: str, request: dict):
-        LOGGER.trace(f"IPC Client {self.identifier}: blocking ping received", CORE)
-        self.send_response("blocking_ping", {"response": "pong"}, rid)
+        except BaseException as e:
+            LOGGER.error_exception(IpcClientRequestHandlerError(e).add_note(f"IPC Client '{identifier}': error while "
+                                                                            f"handling a request from server.'\n"
+                                                                            f"Request: {request}"), CORE)
 
     # --- Sending ---
 
@@ -117,39 +101,61 @@ class IpcClient(SocketClient):
     def send_fire_and_forget_request(self, endpoint: str, data: dict):
         try:
             self.send_data({"rtype": FIRE_AND_FORGET, "endpoint": endpoint, "data": data})
-        except Exception as e:
-            e.add_traceback("IpcClient, send fire and forget")
-            raise e
+        except SocketServerCliIdentifierNotFound as e:
+            raise e.add_note(f"Ipc Client '{self.identifier}': error while sending a fire and forget "
+                             f"request, identifier not found, "
+                             f"request to server', "
+                             f"endpoint '{endpoint}'\nData: {data}")
+        except SocketServerSendError as e:
+            raise e.add_note(f"Ipc Client '{self.identifier}: error while sending a fire and forget "
+                             f"request to server', "
+                             f"endpoint '{endpoint}'\nData: {data}")
 
     # blocking request
     def send_blocking_request(self, endpoint: str, data: dict):
+        # Create a unique id for the request
+        rid = str(uuid.uuid4())
+        # Create a locked semaphore
+        semaphore = threading.Semaphore(0)
+        # Create a placeholder for the response
+        response = None
+        # Fill the response placeholder
+        self.blocking_requests[rid] = [semaphore, response]
+        # Send the request
         try:
-            # Create a unique id for the request
-            rid = str(uuid.uuid4())
-            # Create a locked semaphore
-            semaphore = threading.Semaphore(0)
-            # Create a placeholder for the response
-            response = None
-            # Fill the response placeholder
-            self.blocking_requests[rid] = [semaphore, response]
-            # Send the request
             self.send_data({"rtype": BLOCKING, "endpoint": endpoint, "data": data, "rid": rid})
-            # Wait for the response
-            semaphore.acquire()
-            # Return the response
-            resp = self.blocking_requests[rid][1]
-            del self.blocking_requests[rid]
-            return resp
-        except Exception as e:
-            e.add_traceback("IpcClient, send blocking request")
-            raise e
+        except SocketServerCliIdentifierNotFound as e:
+            raise e.add_note(f"Ipc Client '{self.identifier}': error while sending a blocking "
+                             f"request, identifier not found, "
+                             f"request to server', "
+                             f"endpoint '{endpoint}'\nData: {data}")
+        except SocketServerSendError as e:
+            raise e.add_note(f"Ipc Client '{self.identifier}: error while sending a blocking "
+                             f"request to server', "
+                             f"endpoint '{endpoint}'\nData: {data}")
+        # Wait for the response
+        semaphore.acquire()
+        # Return the response
+        resp = self.blocking_requests[rid][1]
+        del self.blocking_requests[rid]
+        return resp
 
     # responses
     def send_response(self, endpoint: str, data: dict, rid: str):
         try:
             self.send_data({"rtype": RESPONSE, "endpoint": endpoint, "data": data, "rid": rid})
-        except Exception as e:
-            e.add_traceback("IpcClient, send response")
-            raise e
+        except SocketServerCliIdentifierNotFound as e:
+            raise e.add_note(f"Ipc Client '{self.identifier}': error while sending a response"
+                             f"request, identifier not found, "
+                             f"request to server', "
+                             f"endpoint '{endpoint}'\nData: {data}")
+        except SocketServerSendError as e:
+            raise e.add_note(f"Ipc Client '{self.identifier}: error while sending a response "
+                             f"request to server', "
+                             f"endpoint '{endpoint}'\nData: {data}")
+
+
+# TODO: ServerSocket, ClientSocket, IpcServer, IpcClient ont été refactoré avec la nouvelle gestion d'excpetion,
+#  il faudrait juste tester IpcClient et IpcServer puis appliquer le refactoring à KxProcess.
 
 
