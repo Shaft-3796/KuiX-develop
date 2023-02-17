@@ -23,3 +23,6 @@ print("---- SENDING BLOCKING PING FROM CLIENT TO SERVER ----")
 print(server.send_blocking_request("CLI1", "blocking_ping", {}))
 print("Client Ping Sending Done")
 print("-----------------------------------------------------")
+
+server.close()
+client.close()
