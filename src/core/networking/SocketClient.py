@@ -15,7 +15,7 @@ import time
 
 class SocketClient:
     """
-    Implementation of a custom socket server used for IPC (Inter Process Communication).
+    Implementation of a custom socket client used for IPC (Inter Process Communication).
 
     Methods:
         __init__(identifier, auth_key, host, port, artificial_latency)

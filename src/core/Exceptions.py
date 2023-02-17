@@ -72,3 +72,17 @@ class IpcServerRequestHandlerError(GenericException):
 # Client
 class IpcClientRequestHandlerError(GenericException):
     pass
+
+# --- PROCESS ---
+
+class KxProcessStrategyImportError(GenericException):
+    pass
+
+class StrategyNotFoundError(GenericException):
+    pass
+
+class WorkerAlreadyExistsError(GenericException):
+    pass
+
+class WorkerNotFoundError(GenericException):
+    pass

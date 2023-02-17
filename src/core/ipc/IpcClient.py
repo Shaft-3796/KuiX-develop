@@ -102,12 +102,7 @@ class IpcClient(SocketClient):
     def send_fire_and_forget_request(self, endpoint: str, data: dict):
         try:
             self.send_data({"rtype": FIRE_AND_FORGET, "endpoint": endpoint, "data": data})
-        except SocketServerCliIdentifierNotFound as e:
-            raise e.add_note(f"Ipc Client '{self.identifier}': error while sending a fire and forget "
-                             f"request, identifier not found, "
-                             f"request to server', "
-                             f"endpoint '{endpoint}'\nData: {data}")
-        except SocketServerSendError as e:
+        except SocketClientSendError as e:
             raise e.add_note(f"Ipc Client '{self.identifier}: error while sending a fire and forget "
                              f"request to server', "
                              f"endpoint '{endpoint}'\nData: {data}")
