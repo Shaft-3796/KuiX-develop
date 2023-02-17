@@ -60,39 +60,41 @@ class IpcServer(SocketServer):
         self.register_on_message_received(self.handle_request)
 
     # Requests handler, triggered when a message is received
-    def handle_request(self, identifier: str, request: dict):
+    def handle_request(self, identifier: str, data: dict):
         try:
             # Fire and forget or blocking request
-            if request["rtype"] == FIRE_AND_FORGET or request["rtype"] == BLOCKING:
-                ep = self.endpoints if request["rtype"] == FIRE_AND_FORGET else self.blocking_endpoints
-                if request["endpoint"] not in ep:
-                    LOGGER.warning(f"IPC Server: received unknown endpoint '{request['endpoint']}' from {identifier}",
+            if data["rtype"] == FIRE_AND_FORGET or data["rtype"] == BLOCKING:
+                ep = self.endpoints if data["rtype"] == FIRE_AND_FORGET else self.blocking_endpoints
+                if data["endpoint"] not in ep:
+                    LOGGER.warning(f"IPC Server: received unknown endpoint '{data['endpoint']}'\n-> "
+                                   f"If the request was a blocking request, this error will lead to an infinite "
+                                   f"function call !'",
                                    CORE)
                     return
-                ep[request["endpoint"]](identifier, request["data"]) if request["rtype"] == FIRE_AND_FORGET \
-                    else ep[request["endpoint"]](identifier, request["rid"], request["data"])
+                ep[data["endpoint"]](identifier, data["data"]) if data["rtype"] == FIRE_AND_FORGET \
+                    else ep[data["endpoint"]](identifier, data["rid"], data["data"])
 
             # Response request
-            elif request["rtype"] == RESPONSE:
+            elif data["rtype"] == RESPONSE:
                 for i in range(2):
-                    if request["rid"] not in self.blocking_requests:
+                    if data["rid"] not in self.blocking_requests:
                         time.sleep(0.2)
-                if request["rid"] not in self.blocking_requests:
-                    LOGGER.warning(f"IPC Server: received unknown rid, endpoint '{request['endpoint']}' from "
-                                   f"{identifier}\nRequest: {request}", CORE)
+                if data["rid"] not in self.blocking_requests:
+                    LOGGER.warning(f"IPC Server: received unknown rid, endpoint '{data['endpoint']}' from "
+                                   f"{identifier}\nRequest: {data}", CORE)
                     return
-                self.blocking_requests[request["rid"]][1] = request["data"]
-                self.blocking_requests[request["rid"]][0].release()
+                self.blocking_requests[data["rid"]][1] = data["data"]
+                self.blocking_requests[data["rid"]][0].release()
 
             # Unknown request type
             else:
-                LOGGER.warning(f"IPC Server: received unknown request type: {request['rtype']} from {identifier}",
+                LOGGER.warning(f"IPC Server: received unknown request type: {data['rtype']} from {identifier}",
                                CORE)
 
         except BaseException as e:
             LOGGER.error_exception(IpcServerRequestHandlerError(e).add_note(f"Ipc Server: error while handling a "
                                                                             f"request from client '{identifier}'\n"
-                                                                            f"Request: {request}"), CORE)
+                                                                            f"Request: {data}"), CORE)
 
     # --- Sending ---
 

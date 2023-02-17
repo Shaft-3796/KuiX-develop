@@ -32,7 +32,6 @@ import threading
 import time
 import uuid
 
-
 # Request types
 FIRE_AND_FORGET = "FIRE_AND_FORGET"
 BLOCKING = "BLOCKING"
@@ -61,39 +60,41 @@ class IpcClient(SocketClient):
         self.register_on_message_received(self.handle_request)
 
     # Requests handler, triggered when a message is received
-    def handle_request(self, identifier: str, request: dict):
+    def handle_request(self, identifier: str, data: dict):
         try:
             # Fire and forget or blocking request
-            if request["rtype"] == FIRE_AND_FORGET or request["rtype"] == BLOCKING:
-                ep = self.endpoints if request["rtype"] == FIRE_AND_FORGET else self.blocking_endpoints
-                if request["endpoint"] not in ep:
-                    LOGGER.warning(f"IPC Client {identifier}: received unknown endpoint '{request['endpoint']}'",
-                                   CORE)
+            if data["rtype"] == FIRE_AND_FORGET or data["rtype"] == BLOCKING:
+                ep = self.endpoints if data["rtype"] == FIRE_AND_FORGET else self.blocking_endpoints
+                if data["endpoint"] not in ep:
+                    LOGGER.error(f"IPC Client {identifier}: received unknown endpoint '{data['endpoint']}'\n-> "
+                                 f"If the request was a blocking request, this error will lead to an infinite "
+                                 f"function call !'",
+                                 CORE)
                     return
-                ep[request["endpoint"]](request["data"]) if request["rtype"] == FIRE_AND_FORGET \
-                    else ep[request["endpoint"]](request["rid"], request["data"])
+                ep[data["endpoint"]](data["data"]) if data["rtype"] == FIRE_AND_FORGET \
+                    else ep[data["endpoint"]](data["rid"], data["data"])
 
             # Response request
-            elif request["rtype"] == RESPONSE:
+            elif data["rtype"] == RESPONSE:
                 for i in range(2):
-                    if request["rid"] not in self.blocking_requests:
+                    if data["rid"] not in self.blocking_requests:
                         time.sleep(0.2)
-                if request["rid"] not in self.blocking_requests:
-                    LOGGER.warning(f"IPC Client {identifier}: received unknown rid, endpoint '{request['endpoint']}'"
-                                   f"\nRequest: {request}", CORE)
+                if data["rid"] not in self.blocking_requests:
+                    LOGGER.warning(f"IPC Client {identifier}: received unknown rid, endpoint '{data['endpoint']}'"
+                                   f"\nRequest: {data}", CORE)
                     return
-                self.blocking_requests[request["rid"]][1] = request["data"]
-                self.blocking_requests[request["rid"]][0].release()
+                self.blocking_requests[data["rid"]][1] = data["data"]
+                self.blocking_requests[data["rid"]][0].release()
 
             # Unknown request type
             else:
-                LOGGER.warning(f"IPC Client {identifier}: received unknown request type: {request['rtype']}",
+                LOGGER.warning(f"IPC Client {identifier}: received unknown request type: {data['rtype']}",
                                CORE)
 
         except BaseException as e:
             LOGGER.error_exception(IpcClientRequestHandlerError(e).add_note(f"IPC Client '{identifier}': error while "
                                                                             f"handling a request from server.'\n"
-                                                                            f"Request: {request}"), CORE)
+                                                                            f"Request: {data}"), CORE)
 
     # --- Sending ---
 
@@ -153,9 +154,3 @@ class IpcClient(SocketClient):
             raise e.add_note(f"Ipc Client '{self.identifier}: error while sending a response "
                              f"request to server', "
                              f"endpoint '{endpoint}'\nData: {data}")
-
-
-# TODO: ServerSocket, ClientSocket, IpcServer, IpcClient ont été refactoré avec la nouvelle gestion d'excpetion,
-#  il faudrait juste tester IpcClient et IpcServer puis appliquer le refactoring à KxProcess.
-
-
