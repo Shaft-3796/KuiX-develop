@@ -120,12 +120,7 @@ class IpcClient(SocketClient):
         # Send the request
         try:
             self.send_data({"rtype": BLOCKING, "endpoint": endpoint, "data": data, "rid": rid})
-        except SocketServerCliIdentifierNotFound as e:
-            raise e.add_note(f"Ipc Client '{self.identifier}': error while sending a blocking "
-                             f"request, identifier not found, "
-                             f"request to server', "
-                             f"endpoint '{endpoint}'\nData: {data}")
-        except SocketServerSendError as e:
+        except SocketClientSendError as e:
             raise e.add_note(f"Ipc Client '{self.identifier}: error while sending a blocking "
                              f"request to server', "
                              f"endpoint '{endpoint}'\nData: {data}")
@@ -140,12 +135,7 @@ class IpcClient(SocketClient):
     def send_response(self, endpoint: str, data: dict, rid: str):
         try:
             self.send_data({"rtype": RESPONSE, "endpoint": endpoint, "data": data, "rid": rid})
-        except SocketServerCliIdentifierNotFound as e:
-            raise e.add_note(f"Ipc Client '{self.identifier}': error while sending a response"
-                             f"request, identifier not found, "
-                             f"request to server', "
-                             f"endpoint '{endpoint}'\nData: {data}")
-        except SocketServerSendError as e:
+        except SocketClientSendError as e:
             raise e.add_note(f"Ipc Client '{self.identifier}: error while sending a response "
                              f"request to server', "
                              f"endpoint '{endpoint}'\nData: {data}")

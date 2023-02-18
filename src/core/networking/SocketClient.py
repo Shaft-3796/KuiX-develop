@@ -56,11 +56,12 @@ class SocketClient:
         # Socket
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self.socket.settimeout(5)
 
         # To close the IPC client
         self.ipc_client_closed = False
 
-        LOGGER.trace(f"IPC Client {self.identifier} : client fully instanced and ready to connect on "
+        LOGGER.trace(f"Socket Client {self.identifier} : client fully instanced and ready to connect on "
                      f"{self.host}:{self.port}", CORE)
 
     # --- Low level methods ---

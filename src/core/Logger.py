@@ -1,7 +1,7 @@
 """
 This file contains the logging system of KuiX
 """
-from src.core.Exceptions import GenericException
+from src.core.Exceptions import GenericException, cast
 from src.core.Utils import C
 from dataclasses import dataclass
 import multiprocessing
@@ -175,7 +175,7 @@ class Logger:
         :param exception: the Exception
         :param route: the route of the log (CORE, CORE_COMP, STRATEGY, STRATEGY_COMP)
         """
-        exception = exception if isinstance(exception, GenericException) else GenericException(exception)
+        exception = cast(exception)
         data = f"\nException: {C.ITALIC}{exception.traceback}"
         if exception.notes:
             # Join all notes

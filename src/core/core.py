@@ -6,7 +6,7 @@ import multiprocessing
 import os
 
 from src.core.ipc.IpcServer import IpcServer
-from src.core.process.kxprocess import launch
+from src.core.process.KxProcess import launch
 
 # TODO, with events, once the process is started and connected, register all existing strategies
 

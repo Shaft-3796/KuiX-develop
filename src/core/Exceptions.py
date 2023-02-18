@@ -4,17 +4,29 @@ Contains all the exceptions used in the project.
 import traceback as tba
 
 
-def cast(e):
+def cast(e, e_type=None):
     """
     Casts an exception to a GenericException if it is not already one.
+    :param e_type: type of the return exception
     :param e: the exception to cast
     :return: the cast exception
     """
-    return e if isinstance(e, GenericException) else GenericException(e)
+    return e if isinstance(e, GenericException) else (GenericException(e) if e_type is None else e_type(e))
+
+def serialize(e):
+    return {"traceback": e.traceback, "notes": e.notes, "type": type(e).__name__}
+
+def deserialize(e: dict):
+    _e = globals()[e["type"]]()
+    _e.traceback = e["traceback"]
+    _e.notes = e["notes"]
+    return _e
 
 class GenericException(BaseException):
 
-    def __init__(self, exception: BaseException = None):
+    def __init__(self, exception: BaseException = None, message: str = "An error occurred"):
+
+        super().__init__(message)
         self.traceback = tba.format_exc()
         self.notes = [str(exception)] if exception is not None else []
 
@@ -85,4 +97,10 @@ class WorkerAlreadyExistsError(GenericException):
     pass
 
 class WorkerNotFoundError(GenericException):
+    pass
+
+class WorkerInitError(GenericException):
+    pass
+
+class WorkerMethodCallError(GenericException):
     pass
