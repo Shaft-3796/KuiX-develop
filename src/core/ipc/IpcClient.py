@@ -47,7 +47,7 @@ class IpcClient(SocketClient):
         try:
             self.connect()
         except SocketClientConnectionError as e:
-            raise e.add_note(f"Ipc Client '{identifier}' failed to connect to {host}:{port}")
+            raise e.add_ctx(f"Ipc Client '{identifier}': failed to connect to {host}:{port}")
 
         # Placeholder for endpoints
         self.endpoints = {}  # type dict[str, Callable]
@@ -91,10 +91,10 @@ class IpcClient(SocketClient):
                 LOGGER.warning(f"IPC Client {identifier}: received unknown request type: {data['rtype']}",
                                CORE)
 
-        except BaseException as e:
-            LOGGER.error_exception(IpcClientRequestHandlerError(e).add_note(f"IPC Client '{identifier}': error while "
-                                                                            f"handling a request from server.'\n"
-                                                                            f"Request: {data}"), CORE)
+        except Exception as e:
+            LOGGER.error_exception(IpcClientRequestHandlerError(e).add_ctx(f"IPC Client '{identifier}': error while "
+                                                                           f"handling a request from server.'\n"
+                                                                           f"Request: {data}"), CORE)
 
     # --- Sending ---
 
@@ -103,9 +103,9 @@ class IpcClient(SocketClient):
         try:
             self.send_data({"rtype": FIRE_AND_FORGET, "endpoint": endpoint, "data": data})
         except SocketClientSendError as e:
-            raise e.add_note(f"Ipc Client '{self.identifier}: error while sending a fire and forget "
-                             f"request to server', "
-                             f"endpoint '{endpoint}'\nData: {data}")
+            raise e.add_ctx(f"Ipc Client '{self.identifier}: error while sending a fire and forget "
+                            f"request to server', "
+                            f"endpoint '{endpoint}'\nData: {data}")
 
     # blocking request
     def send_blocking_request(self, endpoint: str, data: dict):
@@ -121,9 +121,9 @@ class IpcClient(SocketClient):
         try:
             self.send_data({"rtype": BLOCKING, "endpoint": endpoint, "data": data, "rid": rid})
         except SocketClientSendError as e:
-            raise e.add_note(f"Ipc Client '{self.identifier}: error while sending a blocking "
-                             f"request to server', "
-                             f"endpoint '{endpoint}'\nData: {data}")
+            raise e.add_ctx(f"Ipc Client '{self.identifier}: error while sending a blocking "
+                            f"request to server', "
+                            f"endpoint '{endpoint}'\nData: {data}")
         # Wait for the response
         semaphore.acquire()
         # Return the response
@@ -136,6 +136,6 @@ class IpcClient(SocketClient):
         try:
             self.send_data({"rtype": RESPONSE, "endpoint": endpoint, "data": data, "rid": rid})
         except SocketClientSendError as e:
-            raise e.add_note(f"Ipc Client '{self.identifier}: error while sending a response "
-                             f"request to server', "
-                             f"endpoint '{endpoint}'\nData: {data}")
+            raise e.add_ctx(f"Ipc Client '{self.identifier}: error while sending a response "
+                            f"request to server', "
+                            f"endpoint '{endpoint}'\nData: {data}")

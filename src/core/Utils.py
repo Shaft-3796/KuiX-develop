@@ -68,7 +68,6 @@ def nonblocking(static_identifier: str = None):
     return dynamic_nonblocking if static_identifier is None else static_nonblocking
 
 
-
 # Decorator to register a function as an endpoint by adding a special attribute to it
 def Endpoint(_endpoint: str):
     """

@@ -8,8 +8,8 @@ class Test:
     pass
 
 try:
-    # raise SocketClientSendError().add_note("Une exception !")
+    # raise SocketClientSendError().add_ctx("Une exception !")
     raise GenericException()
-except BaseException as e:
+except Exception as e:
     _e = GenericException(e)
     LOGGER.error_exception(_e, "CORE")

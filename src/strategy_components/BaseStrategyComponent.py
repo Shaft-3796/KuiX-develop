@@ -12,16 +12,17 @@ class BaseStrategyComponent:
     def __init__(self, worker):
         self.worker = worker
 
-    # To override, called to start the component
-    def start_component(self):
+    # --- Core ---
+    def __open__(self):
         pass
 
-    # To override, called to stop the component
-    def stop(self):
+    def __start__(self):
         pass
 
-    # To override, called to destruct the component
-    def destruct(self):
+    def __stop__(self):
+        pass
+
+    def __close__(self):
         pass
 
 
@@ -32,16 +33,19 @@ class DebugStrategyComponent(BaseStrategyComponent):
         super().__init__(worker)
 
     # To override, called to start the component
-    def start_component(self):
+    def __open__(self):
+        LOGGER.info(f"DebugStrategyComponent for worker {self.worker.identifier} opened.", STRATEGY_COMP)
+
+    def __start__(self):
         LOGGER.info(f"DebugStrategyComponent for worker {self.worker.identifier} started.", STRATEGY_COMP)
 
     # To override, called to stop the component
-    def stop(self):
+    def __stop__(self):
         LOGGER.info(f"DebugStrategyComponent for worker {self.worker.identifier} stopped.", STRATEGY_COMP)
 
     # To override, called to destruct the component
-    def destruct(self):
-        LOGGER.info(f"DebugStrategyComponent for worker {self.worker.identifier} destructed.", STRATEGY_COMP)
+    def __close__(self):
+        LOGGER.info(f"DebugStrategyComponent for worker {self.worker.identifier} closed.", STRATEGY_COMP)
 
     # A debug call
     def debug_call(self):

@@ -54,8 +54,8 @@ class SocketServer:
         self.socket.settimeout(0.2)
         try:
             self.socket.bind((self.host, self.port))
-        except BaseException as e:
-            raise SocketServerBindError(e).add_note("Socket Server binding")
+        except Exception as e:
+            raise SocketServerBindError(e).add_ctx("Socket Server binding")
         self.socket.listen()
 
         # To close the IPC server
@@ -104,8 +104,8 @@ class SocketServer:
             except OSError:
                 if not self.accepting_new_connections:
                     LOGGER.trace(f"IPC Server: Stopped accepting new connections", CORE)
-            except BaseException as e:
-                LOGGER.warning_exception(SocketServerAcceptError(e).add_note("Socket Server error while accepting new "
+            except Exception as e:
+                LOGGER.warning_exception(SocketServerAcceptError(e).add_ctx("Socket Server error while accepting new "
                                                                              "connections"), CORE)
 
     # Blocking call, handle requests from a specific connection
@@ -171,8 +171,8 @@ class SocketServer:
                 except socket.timeout or OSError:
                     connection_closed = True
                     break
-                except BaseException as e:
-                    LOGGER.warning_exception(SocketServerListeningConnectionError(e).add_note(
+                except Exception as e:
+                    LOGGER.warning_exception(SocketServerListeningConnectionError(e).add_ctx(
                         f"Socket Server, error while listening connection {identifier}"), CORE)
                     retry += 1
                     if retry > 5:
@@ -205,7 +205,7 @@ class SocketServer:
         # Pre test
         if identifier not in self.connections:
             LOGGER.error(f"IPC Server: Connection {identifier} not found.", CORE)
-            raise SocketServerCliIdentifierNotFound().add_note(f"Socket Server: connection identifier "
+            raise SocketServerCliIdentifierNotFound().add_ctx(f"Socket Server: connection identifier "
                                                                f"'{identifier}' not found")
 
         connection = self.connections[identifier]
@@ -213,8 +213,8 @@ class SocketServer:
             connection.sendall(json.dumps(data).encode("utf-8") + bytes([int(EOT, 16)]))
             LOGGER.trace(f"IPC Server: Sent data to connection {identifier}: {data}", CORE)
             self.__trigger__(self.on_message_sent, identifier=identifier, data=data)
-        except BaseException as e:
-            raise SocketServerSendError(e).add_note("Socket Server, error while sending data to connection '{"
+        except Exception as e:
+            raise SocketServerSendError(e).add_ctx("Socket Server, error while sending data to connection '{"
                                                     "identifier}'")
 
     # Close the server
@@ -226,8 +226,8 @@ class SocketServer:
         self.ipc_server_closed = True
         try:
             self.socket.close()
-        except BaseException as e:
-            raise SocketServerCloseError(e).add_note("Socket Server, error while closing the server")
+        except Exception as e:
+            raise SocketServerCloseError(e).add_ctx("Socket Server, error while closing the server")
         LOGGER.trace(f"Socket Server: Server closed.", CORE)
         self.__trigger__(self.on_server_closed)
 
@@ -243,8 +243,8 @@ class SocketServer:
         for callback in callbacks:
             try:
                 callback(**kwargs)
-            except BaseException as e:
-                LOGGER.warning_exception(SocketServerEventCallbackError(e).add_note(
+            except Exception as e:
+                LOGGER.warning_exception(SocketServerEventCallbackError(e).add_ctx(
                     f"Socket Server, error while triggering callback '{callback}' during an event"), CORE)
 
     # --- Shortcuts to register events ---

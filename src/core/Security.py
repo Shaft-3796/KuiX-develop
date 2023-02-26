@@ -32,3 +32,4 @@ class Encryption:
 
     def decrypt_str(self, data: str):
         return self.cipher.decrypt(data.encode()).decode()
+

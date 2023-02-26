@@ -1,25 +1,19 @@
-import threading
-import time
-import socket
+import traceback
 
-from src.core.Exceptions import GenericException, cast
-from src.core.Logger import LOGGER
+class customException(Exception):
+    def __init__(self, msg):
+        self.msg = msg
+
+    def __str__(self):
+        return self.msg
 
 try:
     try:
         try:
-            8/0
-        except BaseException as e:
-            e = cast(e)
-            e.add_note("Exception raised in lvl 0")
+            raise ValueError("Err")
+        except ValueError as e:
             raise e
-    except BaseException as e:
-        e = cast(e)
-        e.add_note("Exception raised in lvl 1")
-        raise e
-except BaseException as e:
-    e = cast(e)
-    e.add_note("Exception raised in lvl 2")
-    LOGGER.warning_exception(e, "CORE")
-
-
+    except ValueError as e:
+        raise customException("Err2") from e
+except customException as e:
+    print(traceback.format_tb(e.__traceback__))

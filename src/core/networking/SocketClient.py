@@ -90,9 +90,9 @@ class SocketClient:
             else:
                 LOGGER.trace(f"IPC Client {self.identifier}: Server invalidated creds: ", CORE)
                 self.__trigger__(self.on_connection_refused, identifier=authentication_payload["identifier"])
-        except BaseException as e:
-            raise SocketClientConnectionError(e).add_note(f"Socket Client '{self.identifier}' failed to connect "
-                                                          f"to {self.host}:{self.port}")
+        except Exception as e:
+            raise SocketClientConnectionError(e).add_ctx(f"Socket Client '{self.identifier}' failed to connect "
+                                                         f"to {self.host}:{self.port}")
 
     # Blocking call, handle requests from the server
     def listen_for_connection(self):
@@ -111,7 +111,6 @@ class SocketClient:
 
         connection = self.socket
         connection_closed = False
-        retry = 0
 
         # Listening for multiple requests
         while not connection_closed and not self.ipc_client_closed:
@@ -142,7 +141,6 @@ class SocketClient:
                             else:
                                 buffer += bytes([byte])
 
-                        retry = 0  # Reset retry counter
                     else:
                         try:
                             connection.send(IGNORE)
@@ -152,18 +150,10 @@ class SocketClient:
                 except OSError or socket.timeout:
                     connection_closed = True
                     break
-                except BaseException as e:
-                    LOGGER.dump_exception(e, CORE, f"IPC Client  {self.identifier} : "
-                                                   f"Exception while handling connection.")
+                except Exception as e:
                     LOGGER.warning_exception(SocketClientListeningError(e)
-                                             .add_note(f"Socket Client '{self.identifier}'"
-                                                       f": error while listening connection."), CORE)
-                    retry += 1
-                    if retry > 5:
-                        connection_closed = True
-                        LOGGER.warning(f"Socket Client '{self.identifier}': "
-                                       f"max retry exceeded, closing connection.", CORE)
-                        break
+                                             .add_ctx(f"Socket Client '{self.identifier}'"
+                                                      f": error while listening connection."), CORE)
 
             time.sleep(self.artificial_latency)  # Artificial latency for optimization purposes
 
@@ -187,8 +177,8 @@ class SocketClient:
             connection.sendall(json.dumps(data).encode("utf-8") + bytes([int(EOT, 16)]))
             LOGGER.trace(f"IPC Client {self.identifier} : Sent data to server: {data}", CORE)
             self.__trigger__(self.on_message_sent, identifier=self.identifier, data=data)
-        except BaseException as e:
-            raise SocketClientSendError(e).add_note(f"Socket Client '{self.identifier}': "
+        except Exception as e:
+            raise SocketClientSendError(e).add_ctx(f"Socket Client '{self.identifier}': "
                                                     f"error while sending data to server. "
                                                     f"Data: {data}")
 
@@ -200,8 +190,8 @@ class SocketClient:
         self.ipc_client_closed = True
         try:
             self.socket.close()
-        except BaseException as e:
-            raise SocketClientCloseError(e).add_note(f"Socket Client '{self.identifier}': "
+        except Exception as e:
+            raise SocketClientCloseError(e).add_ctx(f"Socket Client '{self.identifier}': "
                                                      f"error while closing connection.")
 
         LOGGER.trace(f"IPC Client {self.identifier} : Client closed.", CORE)
@@ -219,7 +209,7 @@ class SocketClient:
             try:
                 callback(**kwargs)
             except Exception as e:
-                LOGGER.warning_exception(SocketClientEventCallbackError(e).add_note(
+                LOGGER.warning_exception(SocketClientEventCallbackError(e).add_ctx(
                     f"Socket Client '{self.identifier}': error while triggering callback '{callback}' during an event"),
                     CORE)
 

@@ -11,6 +11,7 @@ LOGGER.enable_verbose()
 
 # Create a server
 server = IpcServer("key")
+server.accept_new_connections()
 
 # --- Test IPC client ---
 

@@ -1,6 +1,9 @@
 """
 This file contains the logging system of KuiX
 """
+import sys
+import traceback
+
 from src.core.Exceptions import GenericException, cast
 from src.core.Utils import C
 from dataclasses import dataclass
@@ -15,6 +18,7 @@ INFO = "INFO"
 WARNING = "WARNING"
 ERROR = "ERROR"
 DEBUG = "DEBUG"
+UNCAUGHT = "UNCAUGHT"
 
 
 @dataclass
@@ -159,13 +163,16 @@ class Logger:
         :param exception: the Exception
         :param route: the route of the log (CORE, CORE_COMP, STRATEGY, STRATEGY_COMP)
         """
-        exception = exception if isinstance(exception, GenericException) else GenericException(exception)
-        data = f"\nException: {C.ITALIC}{exception.traceback}"
-        if exception.notes:
+        exception = cast(exception)
+        data = "\n----------------------------------"
+        data += f"\nException: {C.ITALIC}{exception.traceback}"
+        if exception.context:
             # Join all notes
-            data += f"\nNotes:"
-            for note in exception.notes:
-                data += f"\n->\t{note}"
+            data += f"----------------------------------"
+            data += f"\nRuntime context:\n"
+            for note in exception.context:
+                data += f">\t{note}\n"
+        data += f"----------------------------------\n"
         data += f"{C.END}"
         self.log(data, WARNING, route)
 
@@ -176,15 +183,36 @@ class Logger:
         :param route: the route of the log (CORE, CORE_COMP, STRATEGY, STRATEGY_COMP)
         """
         exception = cast(exception)
-        data = f"\nException: {C.ITALIC}{exception.traceback}"
-        if exception.notes:
+        data = "\n----------------------------------"
+        data += f"\n{C.ITALIC}{exception.traceback}"
+        if exception.context:
             # Join all notes
-            data += f"\nNotes:"
-            for note in exception.notes:
-                data += f"\n->\t{note}"
+            data += f"----------------------------------"
+            data += f"\nRuntime context:\n"
+            for note in exception.context:
+                data += f">\t{note}\n"
+            data += f"----------------------------------\n"
         data += f"{C.END}"
         self.log(data, ERROR, route)
 
 
 # Pre instanced logger
 LOGGER = Logger()
+
+
+# Override Exception hook
+def hook(exc_type, e, tb):
+    if not isinstance(e, GenericException):
+        base_hook(exc_type, e, tb)
+        return
+    # Sometimes when exception are raised, the traceback.format_exc() will return NoneType: None,
+    # in this case we reformat the traceback using tb argument given to the hook
+    if "NoneType: None" in e.traceback:
+        new_traceback = "Traceback:\n"
+        new_traceback += "".join(traceback.format_tb(tb))
+        e.traceback = new_traceback
+
+    LOGGER.error_exception(e, UNCAUGHT)
+
+base_hook = sys.excepthook
+sys.excepthook = hook

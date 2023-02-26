@@ -6,18 +6,29 @@ import multiprocessing
 import os
 
 from src.core.ipc.IpcServer import IpcServer
-from src.core.process.KxProcess import launch
+from src.core.process.KxProcess import __launch__ as launch
+from src.core.Logger import LOGGER, CORE
+from src.core.Exceptions import *
+
 
 # TODO, with events, once the process is started and connected, register all existing strategies
+# TODO, convert all GenericException raise to custom ones
+# TODO, fix missing function arguments exceptions not being raised correctly
+# TODO, add trace & info logs
 
 class KuiX:
 
     @staticmethod
     def __setup_files__(path: str):
-        os.makedirs(path + 'kuiX', exist_ok=True)
-        os.makedirs(path + 'kuiX/Logs', exist_ok=True)
-        os.makedirs(path + 'kuiX/Strategies', exist_ok=True)
-        os.makedirs(path + 'kuiX/Components', exist_ok=True)
+        try:
+            if not path.endswith('/') and path != "":
+                path += '/'
+            os.makedirs(path + 'kuiX', exist_ok=True)
+            os.makedirs(path + 'kuiX/Logs', exist_ok=True)
+            os.makedirs(path + 'kuiX/Strategies', exist_ok=True)
+            os.makedirs(path + 'kuiX/Components', exist_ok=True)
+        except Exception as e:
+            raise CoreSetupError(e).add_ctx("Error while setting up files for KuiX")
         return path + 'kuiX/'
 
     @staticmethod
@@ -27,12 +38,16 @@ class KuiX:
             if self.configured:
                 return func(self, *args, **kwargs)
             else:
-                raise Exception("KuiX not configured")
+                raise CoreNotConfigured(f"KuiX Core was not configured, please call 'configure' or "
+                                        f"'load_json_config' method before calling method '{func.__name__}'.")
 
         return wrapper
 
-    def __init__(self, path: str = None):
-        self.root_path = self.__setup_files__(path)
+    def __init__(self, path: str = ""):
+        try:
+            self.root_path = self.__setup_files__(path)
+        except CoreSetupError as e:
+            raise e.add_ctx("Error while instantiating KuiX Core")
 
         # --- PLACEHOLDERS ---
         # Core
@@ -40,6 +55,8 @@ class KuiX:
 
         # Ipc
         self.ipc_server = None
+
+        # Configuration
         self.ipc_host = None
         self.ipc_port = None
         self.auth_key = None
@@ -75,8 +92,8 @@ class KuiX:
         # Instance IPC server
         try:
             self.ipc_server = IpcServer(self.auth_key, self.ipc_host, self.ipc_port, socket_artificial_latency)
-        except Exception as e:
-            raise Exception("Error while configuring KuiX") from e
+        except SocketServerBindError as e:
+            raise e.add_ctx("Error while configuring KuiX Core")
         # Placeholder, register endpoints and events
 
     @Configured
@@ -84,12 +101,12 @@ class KuiX:
         """
         Start KuiX.
         """
-        try:
-            self.ipc_server.accept_new_connections()
-        except Exception as e:
-            raise Exception("Error while starting KuiX") from e
+        # Register connection event
+        self.ipc_server.register_on_connection_accepted(lambda identifier: self.kx_processes.append(identifier))
+        # Accepts connection from processes
+        self.ipc_server.accept_new_connections()
 
-    def load_json_config(self, path: str):
+    def load_json_config(self, path: str = "config.json"):
         """
         Load KuiX configuration from a json file.
         :param path: Path to the json file.
@@ -99,7 +116,7 @@ class KuiX:
                 config = json.load(f)
             self.configure(**config)
         except Exception as e:
-            raise Exception("Error while loading KuiX configuration") from e
+            raise GenericException(e).add_ctx("Error while loading KuiX configuration from json")
 
     @staticmethod
     def generate_auth_key():
@@ -109,7 +126,7 @@ class KuiX:
         return os.urandom(256).hex()
 
     @staticmethod
-    def generate_json_config(path: str):
+    def generate_json_config(path: str = "config.json"):
         try:
             with open(path, "w") as f:
                 json.dump({
@@ -117,9 +134,9 @@ class KuiX:
                     "ipc_port": 6969,
                     "auth_key": "",
                     "process_count": -1
-                }, f)
+                }, f, indent=1)
         except Exception as e:
-            raise Exception("Error while generating KuiX configuration") from e
+            raise GenericException(e).add_ctx("Error while generating KuiX configuration")
 
     # --- PROCESS ---
     @Configured
@@ -129,25 +146,35 @@ class KuiX:
         :param identifier: Identifier of the new process.
         """
         if identifier in self.kx_processes:
-            raise Exception("Process already exists")
+            raise ProcessAlreadyExists("Error while generating KuiX configuration")
 
-        multiprocessing.Process(target=launch, args=(identifier, self.ipc_host, self.ipc_port, self.auth_key)).start()
+        multiprocessing.Process(target=launch, args=(identifier, self.auth_key, self.ipc_host, self.ipc_port)).start()
         # TODO: The process will be appended only with a connection event from the IPC server
+        # TODO: or maybe it can be done in a simpler way with a little shared state variable
 
     # --- STRATEGIES ---
     @Configured
-    def _register_strategy(self, name: str, import_path: str):
+    def register_strategy(self, name: str, import_path: str):
         """
         Register a strategy.
         :param name: Name of the strategy.
         :param import_path: Import path of the strategy.
         """
         if name in self.strategies:
-            raise Exception("Strategy already registered")
+            raise StrategyAlreadyRegistered(f"Strategy '{name}' already registered")
         self.strategies[name] = import_path
         # Push the strategy to all processes
         for process in self.kx_processes:
-            self.ipc_server.send_fire_and_forget(process, "register_strategy", {"name": name, "import_path": import_path})
+            try:
+                response = self.ipc_server.send_blocking_request(process, "register_strategy",
+                                                                 {"name": name, "import_path": import_path})
+                if response["status"] == "error":
+                    # deserialize exception
+                    ex = deserialize(response["return"])
+                    raise ex
+            except SocketServerSendError or SocketServerCliIdentifierNotFound or KeyError or \
+                   KxProcessStrategyImportError as e:
+                LOGGER.warning_exception(e.add_ctx(f"Error from KuiX core while registering strategy '{name}'"), CORE)
 
     @Configured
     def create_worker(self, kx_process_identifier, strategy_name: str, worker_identifier: str, config=None):
@@ -161,10 +188,18 @@ class KuiX:
         if config is None:
             config = {}
         if strategy_name not in self.strategies:
-            raise Exception("Strategy not registered")
-        self.ipc_server.send_fire_and_forget(kx_process_identifier, "create_worker", {"strategy_name": strategy_name,
-                                                                                      "identifier": worker_identifier,
-                                                                                      "config": config})
+            raise StrategyNotRegistered(f"Strategy {strategy_name} was not registered")
+        try:
+            response = self.ipc_server.send_blocking_request(kx_process_identifier, "create_worker",
+                                                             {"strategy_name": strategy_name,
+                                                              "identifier": worker_identifier,
+                                                              "config": config})
+            if response["status"] == "error":
+                ex = deserialize(response["return"])
+                raise ex
+        except (SocketServerSendError, SocketServerCliIdentifierNotFound, StrategyNotFoundError,
+                WorkerAlreadyExistsError, GenericException) as e:
+            raise e.add_ctx(f"Error from KuiX core while creating a new worker for strategy: '{strategy_name}'")
 
     @Configured
     def start_worker(self, kx_process_identifier, worker_identifier: str):

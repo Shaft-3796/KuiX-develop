@@ -46,8 +46,7 @@ class IpcServer(SocketServer):
         try:
             super().__init__(auth_key, host, port, artificial_latency)
         except SocketServerBindError as e:
-            raise e.add_note("Ipc Server setup failed")
-        self.accept_new_connections()
+            raise e.add_ctx("Ipc Server setup failed")
 
         # Placeholder for endpoints
         self.endpoints = {}  # type dict[str, Callable]
@@ -91,10 +90,10 @@ class IpcServer(SocketServer):
                 LOGGER.warning(f"IPC Server: received unknown request type: {data['rtype']} from {identifier}",
                                CORE)
 
-        except BaseException as e:
-            LOGGER.error_exception(IpcServerRequestHandlerError(e).add_note(f"Ipc Server: error while handling a "
-                                                                            f"request from client '{identifier}'\n"
-                                                                            f"Request: {data}"), CORE)
+        except Exception as e:
+            LOGGER.error_exception(IpcServerRequestHandlerError(e).add_ctx(f"Ipc Server: error while handling a "
+                                                                           f"request from client '{identifier}'\n"
+                                                                           f"Request: {data}"), CORE)
 
     # --- Sending ---
 
@@ -103,14 +102,14 @@ class IpcServer(SocketServer):
         try:
             self.send_data(identifier, {"rtype": FIRE_AND_FORGET, "endpoint": endpoint, "data": data})
         except SocketServerCliIdentifierNotFound as e:
-            raise e.add_note(f"Ipc Server: error while sending a fire and forget "
-                             f"request, identifier not found, "
-                             f"request to client '{identifier}', "
-                             f"endpoint '{endpoint}'\nData: {data}")
+            raise e.add_ctx(f"Ipc Server: error while sending a fire and forget "
+                            f"request, identifier not found, "
+                            f"request to client '{identifier}', "
+                            f"endpoint '{endpoint}'\nData: {data}")
         except SocketServerSendError as e:
-            raise e.add_note(f"Ipc Server: error while sending a fire and forget "
-                             f"request to client '{identifier}', "
-                             f"endpoint '{endpoint}'\nData: {data}")
+            raise e.add_ctx(f"Ipc Server: error while sending a fire and forget "
+                            f"request to client '{identifier}', "
+                            f"endpoint '{endpoint}'\nData: {data}")
 
     # blocking request
     def send_blocking_request(self, identifier: str, endpoint: str, data: dict):
@@ -126,14 +125,14 @@ class IpcServer(SocketServer):
         try:
             self.send_data(identifier, {"rtype": BLOCKING, "endpoint": endpoint, "data": data, "rid": rid})
         except SocketServerCliIdentifierNotFound as e:
-            raise e.add_note(f"Ipc Server: error while sending a blocking request, "
-                             f"identifier not found, "
-                             f"request to client '{identifier}', "
-                             f"endpoint '{endpoint}'\nData: {data}")
+            raise e.add_ctx(f"Ipc Server: error while sending a blocking request, "
+                            f"identifier not found, "
+                            f"request to client '{identifier}', "
+                            f"endpoint '{endpoint}'\nData: {data}")
         except SocketServerSendError as e:
-            raise e.add_note(f"Ipc Server: error while sending a blocking "
-                             f"request to client '{identifier}', "
-                             f"endpoint '{endpoint}'\nData: {data}")
+            raise e.add_ctx(f"Ipc Server: error while sending a blocking "
+                            f"request to client '{identifier}', "
+                            f"endpoint '{endpoint}'\nData: {data}")
         # Wait for the response
         semaphore.acquire()
         # Return the response
@@ -146,11 +145,11 @@ class IpcServer(SocketServer):
         try:
             self.send_data(identifier, {"rtype": RESPONSE, "endpoint": endpoint, "data": data, "rid": rid})
         except SocketServerCliIdentifierNotFound as e:
-            raise e.add_note(f"Ipc Server: error while sending a response request, "
-                             f"identifier not found, "
-                             f"request to client '{identifier}', "
-                             f"endpoint '{endpoint}'\nData: {data}")
+            raise e.add_ctx(f"Ipc Server: error while sending a response request, "
+                            f"identifier not found, "
+                            f"request to client '{identifier}', "
+                            f"endpoint '{endpoint}'\nData: {data}")
         except SocketServerSendError as e:
-            raise e.add_note(f"Ipc Server: error while sending a response "
-                             f"request to client '{identifier}', "
-                             f"endpoint '{endpoint}'\nData: {data}")
+            raise e.add_ctx(f"Ipc Server: error while sending a response "
+                            f"request to client '{identifier}', "
+                            f"endpoint '{endpoint}'\nData: {data}")

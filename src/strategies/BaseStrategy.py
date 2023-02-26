@@ -2,7 +2,9 @@
 Implements the base strategy class.
 There is also an implementation of a debug strategy.
 """
+from abc import abstractmethod
 
+from src.core.Exceptions import *
 from src.strategy_components.BaseStrategyComponent import DebugStrategyComponent
 from src.core.Logger import LOGGER, STRATEGY
 import dataclasses
@@ -17,6 +19,7 @@ class StrategyStatus:
     STOPPING = "stopping"
     STOPPED = "stopped"
 
+
 # TODO: document all methods of this class
 
 class BaseStrategy:
@@ -25,66 +28,108 @@ class BaseStrategy:
         # Args
         self.identifier = identifier
 
-        self.thread = None
-        self.worker_status = StrategyStatus.STOPPED
-        self.strategy_components = {}
+        self.thread = None  # Worker thread
+        self.worker_status = StrategyStatus.STOPPED  # Worker status
+        self.strategy_components = {}  # All strategy components
 
-    # Override not recommended, Start a strategy
-    def start(self):
+    def add_component(self, name, component):
+        self.strategy_components[name] = component
+
+    # --- Core ---
+    def __open__(self):
+        for component in self.strategy_components.values():
+            try:
+                component.__open__()
+            except Exception as e:
+                raise cast(e, StrategyComponentOpeningError)
+
+    def __start__(self):
+        # Checking if the worker is already started
         if self.thread is not None:
-            return 1
+            raise WorkerAlreadyStarted("Worker is already started or still running.")
         # Starting components
         for component in self.strategy_components.values():
-            component.start_component()
-        # Starting strategy
+            try:
+                component.__start__()
+            except Exception as e:
+                raise cast(e, StrategyComponentStartingError)
+        # Starting the worker
         self.thread = threading.Thread(target=self.strategy, name=f"STRATEGY_{self.__class__}_{self.identifier}")
         self.worker_status = StrategyStatus.STARTING
         self.thread.start()
         self.worker_status = StrategyStatus.RUNNING
-        return 0
 
-    # Override not recommended, Schedule a stop
-    def stop(self):
+    def __stop__(self):
+        # Checking if the worker is already stopped
+        if self.thread is None:
+            raise WorkerAlreadyStopped("Worker is already stopped.")
+        # Stopping the worker
         self.worker_status = StrategyStatus.STOPPING
-
-    # Override not recommended, Schedule and wait for a stop
-    def blocking_stop(self):
-        self.stop()
+        timer = 0
+        _ = False
         while self.worker_status != StrategyStatus.STOPPED:
+            if timer > 600:
+                self.thread = None
+                raise WorkerStoppingTimeout("Worker was scheduled to stop but is still running after 10mn. "
+                                            "The strategy thread will be dumped but will be still running ! "
+                                            "This will leads to unexpected behaviours and performances "
+                                            "issues. Please consider adding self.check_status calls "
+                                            "in your strategy.")
+            if timer > 60 and not _:
+                LOGGER.warning(f"Worker {self.identifier} was scheduled to stop but is still running after 60 seconds. "
+                               f"Consider adding self.check_status calls in your strategy.", STRATEGY)
+                _ = True
             time.sleep(0.1)
-
-    # Override not recommended, Clear the worker to destruct it.
-    def destruct(self):
-        self.blocking_stop()
+            timer += 0.1
+        self.thread = None
+        # Stopping components
         for component in self.strategy_components.values():
-            component.destruct()
-        self.strategy_finish()
+            try:
+                component.__stop__()
+            except Exception as e:
+                raise cast(e, StrategyComponentStoppingError)
 
-    # --- Strategy Related ---
-    # To override, called to start the strategy
+    def __close__(self):
+        # Stop the worker
+        try:
+            self.__stop__()
+        except WorkerAlreadyStopped:
+            pass
+        except WorkerStoppingTimeout as e:
+            LOGGER.warning_exception(e, STRATEGY)
+        except Exception as e:
+            raise cast(e, WorkerStoppingError)
+
+        # Closing the strategy
+        try:
+            self.close_strategy()
+        except Exception as e:
+            raise cast(e, StrategyClosingError)
+
+        # Closing components
+        for component in self.strategy_components.values():
+            try:
+                component.__close__()
+            except Exception as e:
+                raise cast(e, StrategyComponentClosingError)
+
+    def check_status(self):
+        if self.worker_status == StrategyStatus.STOPPING:
+            self.stop_strategy()
+            self.worker_status = StrategyStatus.STOPPED
+            exit(0)  # Exit strategy thread
+
+    # --- Strategy ---
     def strategy(self):
         while True:
             pass
-            self.strategy_check_status()
+            self.check_status()
             time.sleep(1)
 
-    # Override not recommended, called by the strategy to check if it should stop
-    def strategy_check_status(self):
-        if self.worker_status == StrategyStatus.STOPPING:
-            self.strategy_stop()
-            # Stopping components
-            for component in self.strategy_components.values():
-                component.stop()
-            self.worker_status = StrategyStatus.STOPPED
-            self.thread = None
-            exit(0)  # Exit strategy thread
-
-    # To override, do some stuff before the worker is stopped
-    def strategy_stop(self):
+    def stop_strategy(self):
         pass
 
-    # To override, do some stuff before the worker is completely stopped
-    def strategy_finish(self):
+    def close_strategy(self):
         pass
 
 
@@ -95,22 +140,20 @@ class DebugStrategy(BaseStrategy):
         super().__init__(identifier)
 
         # Add a component
-        self.strategy_components["debug"] = DebugStrategyComponent(self)
+        self.add_component("debug", DebugStrategyComponent(self))
         # Shortcuts
         self.debug = self.strategy_components["debug"]
 
-    # Called to start the strategy
+    # The strategy
     def strategy(self):
         while True:
-            self.strategy_check_status()
+            self.check_status()
             LOGGER.info(f"DebugStrategy {self.identifier} running.", STRATEGY)
             self.debug.debug_call()
             time.sleep(1)
 
-    # To override, do some stuff before the worker is stopped
-    def strategy_stop(self):
+    def stop_strategy(self):
         LOGGER.info(f"DebugStrategy {self.identifier} stopping.", STRATEGY)
 
-    # To override, do some stuff before the worker is completely stopped
-    def strategy_finish(self):
-        LOGGER.info(f"DebugStrategy {self.identifier} finished.", STRATEGY)
+    def close_strategy(self):
+        LOGGER.info(f"DebugStrategy {self.identifier} closing.", STRATEGY)
