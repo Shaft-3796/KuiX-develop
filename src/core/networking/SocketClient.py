@@ -3,11 +3,10 @@ This module implements an IPC custom protocol using sockets.
 """
 import select
 import threading
-from typing import Callable
 
 from src.core.Exceptions import *
-from src.core.Logger import LOGGER, INFO, WARNING, TRACE, CORE
-from src.core.Utils import nonblocking, EOT, IGNORE
+from src.core.Logger import LOGGER, CORE
+from src.core.Utils import EOT, IGNORE
 import socket
 import json
 import time
@@ -91,8 +90,9 @@ class SocketClient:
                 LOGGER.trace(f"IPC Client {self.identifier}: Server invalidated creds: ", CORE)
                 self.__trigger__(self.on_connection_refused, identifier=authentication_payload["identifier"])
         except Exception as e:
-            raise SocketClientConnectionError(e).add_ctx(f"Socket Client '{self.identifier}' failed to connect "
-                                                         f"to {self.host}:{self.port}")
+            raise SocketClientConnectionError(f"Socket Client '{self.identifier}' failed to connect "
+                                              f"to {self.host}:{self.port}, look at the initial exception "
+                                              f"for more details.") + e
 
     # Blocking call, handle requests from the server
     def listen_for_connection(self):
@@ -151,9 +151,10 @@ class SocketClient:
                     connection_closed = True
                     break
                 except Exception as e:
-                    LOGGER.warning_exception(SocketClientListeningError(e)
-                                             .add_ctx(f"Socket Client '{self.identifier}'"
-                                                      f": error while listening connection."), CORE)
+                    LOGGER.warning_exception(SocketClientListeningError(f"Socket Client '{self.identifier}'"
+                                                                        f": error while listening connection, look at "
+                                                                        f"the initial"
+                                                                        f"exception for more details.") + e, CORE)
 
             time.sleep(self.artificial_latency)  # Artificial latency for optimization purposes
 
@@ -178,9 +179,10 @@ class SocketClient:
             LOGGER.trace(f"IPC Client {self.identifier} : Sent data to server: {data}", CORE)
             self.__trigger__(self.on_message_sent, identifier=self.identifier, data=data)
         except Exception as e:
-            raise SocketClientSendError(e).add_ctx(f"Socket Client '{self.identifier}': "
-                                                    f"error while sending data to server. "
-                                                    f"Data: {data}")
+            raise SocketClientSendError(f"Socket Client '{self.identifier}': "
+                                        f"error while sending data to server, "
+                                        f"look at the initial exception for more details."
+                                        f"Data: {data}") + e
 
     # Close the server
     def close(self):
@@ -191,8 +193,9 @@ class SocketClient:
         try:
             self.socket.close()
         except Exception as e:
-            raise SocketClientCloseError(e).add_ctx(f"Socket Client '{self.identifier}': "
-                                                     f"error while closing connection.")
+            raise SocketClientCloseError(f"Socket Client '{self.identifier}': "
+                                         f"error while closing connection, look at the initial exception "
+                                         f"for more details.") + e
 
         LOGGER.trace(f"IPC Client {self.identifier} : Client closed.", CORE)
         self.__trigger__(self.on_client_closed)
@@ -209,8 +212,9 @@ class SocketClient:
             try:
                 callback(**kwargs)
             except Exception as e:
-                LOGGER.warning_exception(SocketClientEventCallbackError(e).add_ctx(
-                    f"Socket Client '{self.identifier}': error while triggering callback '{callback}' during an event"),
+                LOGGER.warning_exception(SocketClientEventCallbackError(
+                    f"Socket Client '{self.identifier}': error while triggering callback '{callback}' during an event, "
+                    f"look at the initial exception for more details.") + e,
                     CORE)
 
     # --- Shortcuts to register events ---

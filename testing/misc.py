@@ -1,19 +1,6 @@
 import traceback
+from src.core.Utils import C
+from src.core.Exceptions import GenericException, cast, format_exception_stack
+from src.core.Logger import LOGGER
 
-class customException(Exception):
-    def __init__(self, msg):
-        self.msg = msg
-
-    def __str__(self):
-        return self.msg
-
-try:
-    try:
-        try:
-            raise ValueError("Err")
-        except ValueError as e:
-            raise e
-    except ValueError as e:
-        raise customException("Err2") from e
-except customException as e:
-    print(traceback.format_tb(e.__traceback__))
+raise ValueError("test")

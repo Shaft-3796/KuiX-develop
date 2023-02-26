@@ -47,7 +47,8 @@ class IpcClient(SocketClient):
         try:
             self.connect()
         except SocketClientConnectionError as e:
-            raise e.add_ctx(f"Ipc Client '{identifier}': failed to connect to {host}:{port}")
+            raise e.add_ctx(f"Ipc Client '{identifier}': failed to connect to {host}:{port}, look at the initial "
+                            f"exception for more details.")
 
         # Placeholder for endpoints
         self.endpoints = {}  # type dict[str, Callable]
@@ -92,9 +93,11 @@ class IpcClient(SocketClient):
                                CORE)
 
         except Exception as e:
-            LOGGER.error_exception(IpcClientRequestHandlerError(e).add_ctx(f"IPC Client '{identifier}': error while "
-                                                                           f"handling a request from server.'\n"
-                                                                           f"Request: {data}"), CORE)
+            LOGGER.error_exception(IpcClientRequestHandlerError(f"IPC Client '{identifier}': error while "
+                                                                f"handling a request from server.'\n"
+                                                                f"Request: {data}, "
+                                                                f"look at the initial exception for more details.") + e,
+                                   CORE)
 
     # --- Sending ---
 

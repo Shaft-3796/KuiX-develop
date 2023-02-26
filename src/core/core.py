@@ -218,3 +218,6 @@ class KuiX:
         :param worker_identifier: Identifier of the worker.
         """
         self.ipc_server.send_fire_and_forget(kx_process_identifier, "stop_worker", {"identifier": worker_identifier})
+
+# TODO: RESUME HERE, continue to refactore the code with the new exception system, modules: core and the 4 folders
+#  for strat & components.

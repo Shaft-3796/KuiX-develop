@@ -4,7 +4,7 @@ This file contains the logging system of KuiX
 import sys
 import traceback
 
-from src.core.Exceptions import GenericException, cast
+from src.core.Exceptions import GenericException, cast, format_exception_stack
 from src.core.Utils import C
 from dataclasses import dataclass
 import multiprocessing
@@ -163,18 +163,32 @@ class Logger:
         :param exception: the Exception
         :param route: the route of the log (CORE, CORE_COMP, STRATEGY, STRATEGY_COMP)
         """
-        exception = cast(exception)
-        data = "\n----------------------------------"
-        data += f"\nException: {C.ITALIC}{exception.traceback}"
-        if exception.context:
-            # Join all notes
-            data += f"----------------------------------"
-            data += f"\nRuntime context:\n"
-            for note in exception.context:
-                data += f">\t{note}\n"
-        data += f"----------------------------------\n"
-        data += f"{C.END}"
-        self.log(data, WARNING, route)
+        with self.lock:
+            color_header = LogTypes.__type_header_color__["WARNING"]
+            color_body = LogTypes.__type_body_color__["WARNING"]
+            log_time = time.strftime("%d-%m-%y %H:%M:%S")
+
+            # Console log
+            _log = f"{color_header}[{log_time}] WARNING from {route}:{color_body}{C.END}\n"
+            _log += format_exception_stack(exception, color=color_body)
+
+            # JSON log
+            try:
+                json_log = json.dumps({"time": log_time, "type": "WARNING", "route": route, "data":
+                    _log})
+            except Exception as e:
+                self.warning(f"Error while logging and dumping to json exception: {e}", route)
+
+            # Logging
+            print(_log, end='')
+            if self.log_path:
+                for retry in range(3):
+                    try:
+                        with open(f"{self.log_path}/{route}_WARNING.log", "a") as f:
+                            f.write(json_log + "\n")
+                        break
+                    except FileNotFoundError:
+                        open(f"{self.log_path}/{route}_WARNING.log", "w").close()
 
     def error_exception(self, exception, route: str):
         """
@@ -182,18 +196,32 @@ class Logger:
         :param exception: the Exception
         :param route: the route of the log (CORE, CORE_COMP, STRATEGY, STRATEGY_COMP)
         """
-        exception = cast(exception)
-        data = "\n----------------------------------"
-        data += f"\n{C.ITALIC}{exception.traceback}"
-        if exception.context:
-            # Join all notes
-            data += f"----------------------------------"
-            data += f"\nRuntime context:\n"
-            for note in exception.context:
-                data += f">\t{note}\n"
-            data += f"----------------------------------\n"
-        data += f"{C.END}"
-        self.log(data, ERROR, route)
+        with self.lock:
+            color_header = LogTypes.__type_header_color__["ERROR"]
+            color_body = LogTypes.__type_body_color__["ERROR"]
+            log_time = time.strftime("%d-%m-%y %H:%M:%S")
+
+            # Console log
+            _log = f"{color_header}[{log_time}] ERROR from {route}:{color_body}{C.END}\n"
+            _log += format_exception_stack(exception)
+
+            # JSON log
+            try:
+                json_log = json.dumps({"time": log_time, "type": "ERROR", "route": route, "data":
+                    _log})
+            except Exception as e:
+                self.warning(f"Error while logging and dumping to json exception: {e}", route)
+
+            # Logging
+            print(_log, end='')
+            if self.log_path:
+                for retry in range(3):
+                    try:
+                        with open(f"{self.log_path}/{route}_ERROR.log", "a") as f:
+                            f.write(json_log + "\n")
+                        break
+                    except FileNotFoundError:
+                        open(f"{self.log_path}/{route}_ERROR.log", "w").close()
 
 
 # Pre instanced logger
@@ -202,17 +230,6 @@ LOGGER = Logger()
 
 # Override Exception hook
 def hook(exc_type, e, tb):
-    if not isinstance(e, GenericException):
-        base_hook(exc_type, e, tb)
-        return
-    # Sometimes when exception are raised, the traceback.format_exc() will return NoneType: None,
-    # in this case we reformat the traceback using tb argument given to the hook
-    if "NoneType: None" in e.traceback:
-        new_traceback = "Traceback:\n"
-        new_traceback += "".join(traceback.format_tb(tb))
-        e.traceback = new_traceback
-
     LOGGER.error_exception(e, UNCAUGHT)
 
-base_hook = sys.excepthook
 sys.excepthook = hook

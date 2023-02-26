@@ -63,10 +63,11 @@ class KxProcess:
             try:
                 worker.destruct_worker()
             except Exception as e:
-                LOGGER.error_exception(cast(e, WorkerMethodCallError).add_ctx(f"KxProcess '{self.identifier}': "
-                                                                              f"error while destructing a worker "
-                                                                              f"during"
-                                                                              f"_destruct_process."), CORE)
+                LOGGER.error_exception(cast(e, f"KxProcess '{self.identifier}': "
+                                               f"error while destructing a worker "
+                                               f"during"
+                                               f"_destruct_process, look at the initial exception for more details.",
+                                            WorkerMethodCallError), CORE)
         try:
             self.ipc.close()
         except SocketClientCloseError as e:
@@ -81,8 +82,9 @@ class KxProcess:
         try:
             strategy = __import__(import_path, fromlist=[name])
         except Exception as e:
-            raise KxProcessStrategyImportError(e).add_ctx(f"KxProcess {self.identifier} _register_strategy: "
-                                                          f"unable to import strategy at {import_path}")
+            raise KxProcessStrategyImportError(f"KxProcess {self.identifier} _register_strategy: "
+                                               f"unable to import strategy at {import_path}, "
+                                               f"look at the initial exception for more details.") + e
         # Register strategy
         self.strategies[name] = strategy
 
@@ -100,8 +102,8 @@ class KxProcess:
                                                f"'{identifier}' already exists.")
             worker = self.strategies[strategy_name](identifier, config)
         except Exception as e:
-            raise cast(e, WorkerInitError).add_ctx(
-                f"KxProcess {self.identifier} _create_worker: worker '{identifier}' failed to init.")
+            raise cast(e, e_type=WorkerInitError, msg=f"KxProcess {self.identifier} _create_worker: worker "
+                                                      f"'{identifier}' failed to init.")
 
         # Register worker
         self.workers[identifier] = worker
@@ -115,9 +117,9 @@ class KxProcess:
                                           f"'{identifier}' not found.")
             self.workers[identifier].start()
         except Exception as e:
-            raise cast(e, WorkerMethodCallError).add_ctx(
-                f"KxProcess {self.identifier} _start_worker: worker '{identifier}' "
-                f"failed to start.")
+            raise cast(e, e_type=WorkerMethodCallError, msg=
+            f"KxProcess {self.identifier} _start_worker: worker '{identifier}' "
+            f"failed to start.")
 
     def stop_worker(self, identifier: str):
         # Stop worker
@@ -128,8 +130,8 @@ class KxProcess:
                                           f"'{identifier}' not found.")
             self.workers[identifier].stop()
         except Exception as e:
-            raise cast(e, WorkerMethodCallError).add_ctx(f"KxProcess {self.identifier} _stop_worker: worker "
-                                                         f"'{identifier}' failed to stop.")
+            raise cast(e, e_type=WorkerMethodCallError, msg=f"KxProcess {self.identifier} _stop_worker: worker "
+                                                            f"'{identifier}' failed to stop.")
 
     def destruct_worker(self, identifier: str):
         # Destruct worker
@@ -141,9 +143,9 @@ class KxProcess:
             self.workers[identifier].destruct()
             del self.workers[identifier]
         except Exception as e:
-            raise cast(e, WorkerMethodCallError).add_ctx(
-                f"KxProcess {self.identifier} _destruct_worker: worker '{identifier}' "
-                f"failed to being destructed.")
+            raise cast(e, e_type=WorkerMethodCallError, msg=
+            f"KxProcess {self.identifier} _destruct_worker: worker '{identifier}' "
+            f"failed to being destructed.")
 
     # --- IPC management ---
     def register_endpoint(self, name: str, callback: callable):
@@ -162,8 +164,8 @@ class KxProcess:
                 try:
                     self.worker_endpoints[name][data["worker_id"]](data)
                 except Exception as e:
-                    LOGGER.error_exception(cast(e, WorkerMethodCallError).add_ctx("KxProcess error while calling "
-                                                                                  "worker endpoint"), CORE)
+                    LOGGER.error_exception(cast(e, e_type=WorkerMethodCallError, msg="KxProcess error while calling "
+                                                                                     "worker endpoint"), CORE)
 
             self.ipc.endpoints[name] = __routing__  # registering routing function as the endpoint.
 
@@ -180,8 +182,8 @@ class KxProcess:
                 try:
                     self.worker_blocking_endpoints[name][data["worker_id"]](rid, data)
                 except Exception as e:
-                    LOGGER.error_exception(cast(e, WorkerMethodCallError).add_ctx("KxProcess error while calling "
-                                                                                  "worker blocking endpoint"), CORE)
+                    LOGGER.error_exception(cast(e, e_type=WorkerMethodCallError, msg="KxProcess error while calling "
+                                                                                     "worker blocking endpoint"), CORE)
 
             self.ipc.blocking_endpoints[name] = __routing__  # registering routing function as the endpoint.
 

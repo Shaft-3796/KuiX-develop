@@ -25,7 +25,6 @@ III-) Response:
     request = {rtype: "RESPONSE", endpoint: "endpoint", data: {...}, rid: "unique_id"}
 """
 from src.core.networking.SocketServer import SocketServer
-from src.core.Utils import Endpoint, BlockingEndpoint
 from src.core.Logger import LOGGER, CORE
 from src.core.Exceptions import *
 import threading
@@ -91,9 +90,10 @@ class IpcServer(SocketServer):
                                CORE)
 
         except Exception as e:
-            LOGGER.error_exception(IpcServerRequestHandlerError(e).add_ctx(f"Ipc Server: error while handling a "
-                                                                           f"request from client '{identifier}'\n"
-                                                                           f"Request: {data}"), CORE)
+            LOGGER.error_exception(IpcServerRequestHandlerError(f"Ipc Server: error while handling a "
+                                                                f"request from client '{identifier}, "
+                                                                f"look at the initial exception for more details.'\n"
+                                                                f"Request: {data}") + e, CORE)
 
     # --- Sending ---
 

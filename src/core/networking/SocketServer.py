@@ -39,7 +39,7 @@ class SocketServer:
 
         # Events
         self.on_connection_accepted = [lambda identifier: threading.Thread(target=self.listen_for_connection,
-                                                                           args=(identifier, ),
+                                                                           args=(identifier,),
                                                                            name=identifier).start()]
         self.on_connection_refused = []
         self.on_connection_closed = []
@@ -55,7 +55,8 @@ class SocketServer:
         try:
             self.socket.bind((self.host, self.port))
         except Exception as e:
-            raise SocketServerBindError(e).add_ctx("Socket Server binding")
+            raise SocketServerBindError("Socket Server failed to bind to host and port, "
+                                        "look at the initial exception for more details.") + e
         self.socket.listen()
 
         # To close the IPC server
@@ -105,10 +106,12 @@ class SocketServer:
                 if not self.accepting_new_connections:
                     LOGGER.trace(f"IPC Server: Stopped accepting new connections", CORE)
             except Exception as e:
-                LOGGER.warning_exception(SocketServerAcceptError(e).add_ctx("Socket Server error while accepting new "
-                                                                             "connections"), CORE)
+                LOGGER.warning_exception(SocketServerAcceptError("Socket Server error while accepting new "
+                                                                 "connections, look at the initial "
+                                                                 "exception for more details.") + e, CORE)
 
-    # Blocking call, handle requests from a specific connection
+                # Blocking call, handle requests from a specific connection
+
     def listen_for_connection(self, identifier: str):
         """
         Listens for a connection with a specific identifier.
@@ -172,8 +175,10 @@ class SocketServer:
                     connection_closed = True
                     break
                 except Exception as e:
-                    LOGGER.warning_exception(SocketServerListeningConnectionError(e).add_ctx(
-                        f"Socket Server, error while listening connection {identifier}"), CORE)
+                    LOGGER.warning_exception(SocketServerListeningConnectionError(f"Socket Server, error while "
+                                                                                  f"listening connection {identifier}, "
+                                                                                  f"look at the initial exception for "
+                                                                                  f"more details.") + e, CORE)
                     retry += 1
                     if retry > 5:
                         connection_closed = True
@@ -205,8 +210,8 @@ class SocketServer:
         # Pre test
         if identifier not in self.connections:
             LOGGER.error(f"IPC Server: Connection {identifier} not found.", CORE)
-            raise SocketServerCliIdentifierNotFound().add_ctx(f"Socket Server: connection identifier "
-                                                               f"'{identifier}' not found")
+            raise SocketServerCliIdentifierNotFound(f"Socket Server: connection identifier "
+                                                    f"'{identifier}' not found.")
 
         connection = self.connections[identifier]
         try:
@@ -214,8 +219,8 @@ class SocketServer:
             LOGGER.trace(f"IPC Server: Sent data to connection {identifier}: {data}", CORE)
             self.__trigger__(self.on_message_sent, identifier=identifier, data=data)
         except Exception as e:
-            raise SocketServerSendError(e).add_ctx("Socket Server, error while sending data to connection '{"
-                                                    "identifier}'")
+            raise SocketServerSendError(f"Socket Server, error while sending data to connection '{identifier}', "
+                                        f"look at the initial exception for more details.") + e
 
     # Close the server
     def close(self):
@@ -227,7 +232,8 @@ class SocketServer:
         try:
             self.socket.close()
         except Exception as e:
-            raise SocketServerCloseError(e).add_ctx("Socket Server, error while closing the server")
+            raise SocketServerCloseError("Socket Server, error while closing the server, look at the initial exception "
+                                         "for more details.") + e
         LOGGER.trace(f"Socket Server: Server closed.", CORE)
         self.__trigger__(self.on_server_closed)
 
@@ -244,8 +250,9 @@ class SocketServer:
             try:
                 callback(**kwargs)
             except Exception as e:
-                LOGGER.warning_exception(SocketServerEventCallbackError(e).add_ctx(
-                    f"Socket Server, error while triggering callback '{callback}' during an event"), CORE)
+                LOGGER.warning_exception(SocketServerEventCallbackError(
+                    f"Socket Server, error while triggering callback '{callback}' during an event, "
+                    f"look at the initial exception for more details.") + e, CORE)
 
     # --- Shortcuts to register events ---
     def register_on_connection_accepted(self, callback):
