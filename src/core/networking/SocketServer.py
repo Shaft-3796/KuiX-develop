@@ -22,14 +22,14 @@ class SocketServer:
     def __init__(self, auth_key: str, host: str = "localhost", port: int = 6969,
                  artificial_latency: float = 0.1):
         """
-        IPC server instantiation.
-        :param auth_key: The key used to authenticate clients.
+        Instance a socket server used for inter process communication (IPC).
+        :param auth_key: The key clients will use to authenticate themselves.
         :param port (optional): The port to listen on. Default is 6969.
-        :param host (optional): The host to listen on. Default is localhost. We don't recommend changing this.
+        :param host (optional): The host to listen on. Default is localhost.
         :param artificial_latency (optional): Time in s between each .recv call for a connection. Default is 0.1s.
-        This is used to prevent the CPU from being overloaded.
+        This is used to prevent the CPU from being overloaded. Change this value if you know what you're doing.
 
-        :raise SocketBindError: If the socket cannot be bound to the specified host and port.
+        :raise SocketServerBindError: If the socket cannot be bound to the specified host and port.
         """
         # Args
         self.auth_key = auth_key
@@ -55,7 +55,7 @@ class SocketServer:
         try:
             self.socket.bind((self.host, self.port))
         except Exception as e:
-            raise SocketServerBindError("Socket Server failed to bind to host and port, "
+            raise SocketServerBindError(f"Socket Server failed to bind to {host}:{port}, "
                                         "look at the initial exception for more details.") + e
         self.socket.listen()
 
@@ -70,7 +70,7 @@ class SocketServer:
     @nonblocking("ipc_server_new_connection_listener")
     def accept_new_connections(self):
         """
-        Accepts new connections and authenticates them.
+        This method launches a new thread that will let the server accept new connections.
         """
 
         self.accepting_new_connections = True  # Assume we really want to accept new connections
@@ -106,16 +106,18 @@ class SocketServer:
                 if not self.accepting_new_connections:
                     LOGGER.trace(f"IPC Server: Stopped accepting new connections", CORE)
             except Exception as e:
-                LOGGER.warning_exception(SocketServerAcceptError("Socket Server error while accepting new "
-                                                                 "connections, look at the initial "
-                                                                 "exception for more details.") + e, CORE)
+                LOGGER.warning_exception(SocketServerAcceptError("Socket server encountered probably non critical "
+                                                                 "issues while accepting new connections, "
+                                                                 "look at the initial exception for more details.")
+                                         + e, CORE)
 
                 # Blocking call, handle requests from a specific connection
 
     def listen_for_connection(self, identifier: str):
         """
-        Listens for a connection with a specific identifier.
-        :param identifier: The identifier of the connection to listen for.
+        Listens for a client connection and triggers the on_message_received event when a message is received.
+        This method is blocking and called automatically when a new connection is accepted.
+        :param identifier: The identifier of the connection (client) to listen for.
         """
 
         def flush_buffer():
@@ -128,12 +130,14 @@ class SocketServer:
 
         # Pre test
         if identifier not in self.connections:
-            LOGGER.error(f"Socket Server error while listening connection: Connection {identifier} not found.", CORE)
+            e = SocketServerClientNotFound(f"Socket server was asked to listen for connection of client "
+                                           f"'{identifier}', but the client is not connected or the "
+                                           f"identifier is wrong.")
+            LOGGER.error_exception(e, CORE)
             return
 
         connection = self.connections[identifier]
         connection_closed = False
-        retry = 0
 
         # Listening for multiple requests
         while not connection_closed and not self.ipc_server_closed:
@@ -164,7 +168,6 @@ class SocketServer:
                             else:
                                 buffer += bytes([byte])
 
-                        retry = 0  # Reset retry counter
                     else:
                         try:
                             connection.send(IGNORE)
@@ -175,43 +178,57 @@ class SocketServer:
                     connection_closed = True
                     break
                 except Exception as e:
-                    LOGGER.warning_exception(SocketServerListeningConnectionError(f"Socket Server, error while "
-                                                                                  f"listening connection {identifier}, "
+                    LOGGER.warning_exception(SocketServerListeningConnectionError(f"Socket Server encountered error "
+                                                                                  f"while"
+                                                                                  f"listening connection  of client "
+                                                                                  f"'{identifier}', "
                                                                                   f"look at the initial exception for "
                                                                                   f"more details.") + e, CORE)
-                    retry += 1
-                    if retry > 5:
-                        connection_closed = True
-                        LOGGER.warning(f"Socket Server: Connection {identifier}, max retry exceeded, closing "
-                                       f"connection.", CORE)
-                        break
 
             time.sleep(self.artificial_latency)  # Artificial latency for optimization purposes
 
         if connection_closed:
-            LOGGER.info(f"Socket Server: Connection {identifier} closed by the client.", CORE)
-            connection.close()
-            self.connections.pop(identifier)
+            LOGGER.trace(f"Socket Server: Connection '{identifier}' closed by the client.", CORE)
+            try:
+                connection.close()
+            except OSError:
+                pass
+            try:
+                self.connections.pop(identifier)
+            except KeyError:
+                pass
             self.__trigger__(self.on_connection_closed, identifier=identifier, from_server=False)
         else:
-            LOGGER.info(f"Socket Server: Connection {identifier} closed by server.", CORE)
-            connection.close()
-            self.connections.pop(identifier)
+            LOGGER.trace(f"Socket Server: Connection '{identifier}' closed by server.", CORE)
+            try:
+                connection.close()
+            except OSError:
+                pass
+            try:
+                self.connections.pop(identifier)
+            except KeyError:
+                pass
             self.__trigger__(self.on_connection_closed, identifier=identifier, from_server=True)
 
     # Non blocking call, send given data to a specific connection
     def send_data(self, identifier: str, data: dict):
         """
-        Sends data to a connection with a specific identifier.
-        :param identifier: The identifier of the connection to send data to.
-        :param data: The data to send.
+        Sends data to a connection (client).
+        :param identifier: The identifier of the connection (client) to send data to.
+        :param data: The data to send as a dict.
+
+        :raises SocketServerClientNotFound: If the connection (client) is not found, if the client is not
+        connected or the identifier is wrong.
+        :raises SocketServerSendError: If an error occurred while sending data to the client, you can access the initial
+        exception type and msg by accessing 'initial_type' and 'initial_msg' attributes of the raised exception.
         """
 
         # Pre test
         if identifier not in self.connections:
             LOGGER.error(f"IPC Server: Connection {identifier} not found.", CORE)
-            raise SocketServerCliIdentifierNotFound(f"Socket Server: connection identifier "
-                                                    f"'{identifier}' not found.")
+            raise SocketServerClientNotFound(f"Socket server encountered error while sending data to a client.\n"
+                                             f"Identifier: '{identifier}'.\n"
+                                             f"The client is not connected or the identifier is wrong.")
 
         connection = self.connections[identifier]
         try:
@@ -219,21 +236,25 @@ class SocketServer:
             LOGGER.trace(f"IPC Server: Sent data to connection {identifier}: {data}", CORE)
             self.__trigger__(self.on_message_sent, identifier=identifier, data=data)
         except Exception as e:
-            raise SocketServerSendError(f"Socket Server, error while sending data to connection '{identifier}', "
-                                        f"look at the initial exception for more details.") + e
+            raise SocketServerSendError(f"Socket Server encountered error while sending data to a client.\n"
+                                        f"Identifier: '{identifier}'.\n"
+                                        f"Data: {data}.\n"
+                                        f"Look at the initial exception for more details.") + e
 
     # Close the server
     def close(self):
         """
-        Closes the server.
+        Closes the socket server.
+        :raises SocketServerCloseError: If an error occurred while closing the server, you can access the initial
+        exception type and msg by accessing 'initial_type' and 'initial_msg' attributes of the raised exception.
         """
         self.accepting_new_connections = False
         self.ipc_server_closed = True
         try:
             self.socket.close()
         except Exception as e:
-            raise SocketServerCloseError("Socket Server, error while closing the server, look at the initial exception "
-                                         "for more details.") + e
+            raise SocketServerCloseError("Socket Server encountered error while closing the server.\n"
+                                         "Look at the initial exception for more details.") + e
         LOGGER.trace(f"Socket Server: Server closed.", CORE)
         self.__trigger__(self.on_server_closed)
 
@@ -243,16 +264,19 @@ class SocketServer:
         """
         Triggers an event.
         :param callback: The callback to trigger.
-        :param args: The args to pass to the callback.
-        :param kwargs: The kwargs to pass to the callback.
+        :param kwargs: Kwargs to pass to the callback.
+
+        :raises SocketServerEventCallbackError: If an error occurred while calling a callback, you can access
+        the initial exception type and msg by accessing 'initial_type' and 'initial_msg' attributes of the raised
+        exception.
         """
         for callback in callbacks:
             try:
                 callback(**kwargs)
             except Exception as e:
                 LOGGER.warning_exception(SocketServerEventCallbackError(
-                    f"Socket Server, error while triggering callback '{callback}' during an event, "
-                    f"look at the initial exception for more details.") + e, CORE)
+                    f"Socket Server encountered error while calling callback '{callback.__name__}' during an event.\n"
+                    f"Look at the initial exception for more details.") + e, CORE)
 
     # --- Shortcuts to register events ---
     def register_on_connection_accepted(self, callback):

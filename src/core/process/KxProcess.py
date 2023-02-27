@@ -231,7 +231,7 @@ class KxProcess:
         try:
             self.start_worker(data["identifier"])
             ret_data = {"status": "success", "return": "Successfully started worker."}
-        except WorkerNotFoundError or GenericException as e:
+        except (WorkerNotFoundError, GenericException, WorkerMethodCallError) as e:
             ret_data = {"status": "error", "return": e.serialize()}
         self.ipc.send_response("start_worker", ret_data, rid)
 
@@ -240,7 +240,7 @@ class KxProcess:
         try:
             self.stop_worker(data["identifier"])
             ret_data = {"status": "success", "return": "Successfully stopped worker."}
-        except WorkerNotFoundError or GenericException as e:
+        except (WorkerNotFoundError, GenericException, WorkerMethodCallError) as e:
             ret_data = {"status": "error", "return": e.serialize()}
         self.ipc.send_response("stop_worker", ret_data, rid)
 
@@ -249,7 +249,7 @@ class KxProcess:
         try:
             self.destruct_worker(data["identifier"])
             ret_data = {"status": "success", "return": "Successfully destructed worker."}
-        except WorkerNotFoundError or GenericException as e:
+        except (WorkerNotFoundError, GenericException, WorkerMethodCallError) as e:
             ret_data = {"status": "error", "return": e.serialize()}
         self.ipc.send_response("destruct_worker", ret_data, rid)
 

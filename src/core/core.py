@@ -226,4 +226,12 @@ class KuiX:
         :param kx_process_identifier: Identifier of the KX process to use.
         :param worker_identifier: Identifier of the worker.
         """
-        self.ipc_server.send_fire_and_forget(kx_process_identifier, "stop_worker", {"identifier": worker_identifier})
+        try:
+            response = self.ipc_server.send_blocking_request(kx_process_identifier, "stop_worker",
+                                                             {"identifier": worker_identifier})
+            if response["status"] == "error":
+                ex = deserialize(response["return"])
+                raise ex
+        except (SocketServerSendError, SocketServerCliIdentifierNotFound, WorkerNotFoundError, GenericException) as e:
+            raise e.add_ctx(f"Error from KuiX core while stopping worker '{worker_identifier}' instanced on process "
+                            f"'{kx_process_identifier}'")

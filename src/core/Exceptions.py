@@ -174,12 +174,11 @@ class SocketServerBindError(GenericException):
 class SocketServerAcceptError(GenericException):
     pass
 
-
-class SocketServerListeningConnectionError(GenericException):
+class SocketServerClientNotFound(Exception):
     pass
 
 
-class SocketServerCliIdentifierNotFound(GenericException):
+class SocketServerListeningConnectionError(GenericException):
     pass
 
 

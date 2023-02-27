@@ -259,3 +259,5 @@ class SocketClient:
         :param callback: The callback to register.
         """
         self.on_client_closed.append(callback)
+
+# TODO: resume, complete docsrings and improve exceptions as did in the server
