@@ -28,7 +28,8 @@ class KuiX:
             os.makedirs(path + 'kuiX/Strategies', exist_ok=True)
             os.makedirs(path + 'kuiX/Components', exist_ok=True)
         except Exception as e:
-            raise CoreSetupError(e).add_ctx("Error while setting up files for KuiX")
+            raise CoreSetupError("Error while setting up files for KuiX, "
+                                 "look at the initial exception for more details.") + e
         return path + 'kuiX/'
 
     @staticmethod
@@ -116,7 +117,8 @@ class KuiX:
                 config = json.load(f)
             self.configure(**config)
         except Exception as e:
-            raise GenericException(e).add_ctx("Error while loading KuiX configuration from json")
+            raise GenericException("Error while loading KuiX configuration from json, look at the initial exception "
+                                   "for more details.") + e
 
     @staticmethod
     def generate_auth_key():
@@ -136,7 +138,8 @@ class KuiX:
                     "process_count": -1
                 }, f, indent=1)
         except Exception as e:
-            raise GenericException(e).add_ctx("Error while generating KuiX configuration")
+            raise GenericException("Error while generating KuiX configuration, "
+                                   "look at the initial exception for more details.") + e
 
     # --- PROCESS ---
     @Configured
@@ -188,7 +191,7 @@ class KuiX:
         if config is None:
             config = {}
         if strategy_name not in self.strategies:
-            raise StrategyNotRegistered(f"Strategy {strategy_name} was not registered")
+            raise StrategyNotRegistered(f"Strategy {strategy_name} was not registered.")
         try:
             response = self.ipc_server.send_blocking_request(kx_process_identifier, "create_worker",
                                                              {"strategy_name": strategy_name,
@@ -218,6 +221,3 @@ class KuiX:
         :param worker_identifier: Identifier of the worker.
         """
         self.ipc_server.send_fire_and_forget(kx_process_identifier, "stop_worker", {"identifier": worker_identifier})
-
-# TODO: RESUME HERE, continue to refactore the code with the new exception system, modules: core and the 4 folders
-#  for strat & components.

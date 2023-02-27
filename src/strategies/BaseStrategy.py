@@ -41,7 +41,8 @@ class BaseStrategy:
             try:
                 component.__open__()
             except Exception as e:
-                raise cast(e, StrategyComponentOpeningError)
+                raise StrategyComponentOpeningError(f"Error while opening strategy component: {component.__class__}, "
+                                                    f"look at the initial exception for more details.") + e
 
     def __start__(self):
         # Checking if the worker is already started
@@ -52,7 +53,8 @@ class BaseStrategy:
             try:
                 component.__start__()
             except Exception as e:
-                raise cast(e, StrategyComponentStartingError)
+                raise StrategyComponentStartingError(f"Error while starting strategy component: {component.__class__}, "
+                                                     f"look at the initial exception for more details.") + e
         # Starting the worker
         self.thread = threading.Thread(target=self.strategy, name=f"STRATEGY_{self.__class__}_{self.identifier}")
         self.worker_status = StrategyStatus.STARTING
@@ -87,7 +89,8 @@ class BaseStrategy:
             try:
                 component.__stop__()
             except Exception as e:
-                raise cast(e, StrategyComponentStoppingError)
+                raise StrategyComponentStoppingError(f"Error while stopping strategy component: {component.__class__}, "
+                                                     f"look at the initial exception for more details.") + e
 
     def __close__(self):
         # Stop the worker
@@ -98,20 +101,23 @@ class BaseStrategy:
         except WorkerStoppingTimeout as e:
             LOGGER.warning_exception(e, STRATEGY)
         except Exception as e:
-            raise cast(e, WorkerStoppingError)
+            raise WorkerStoppingError(f"Error while stopping worker: {self.__class__}, "
+                                      f"look at the initial exception for more details.") + e
 
         # Closing the strategy
         try:
             self.close_strategy()
         except Exception as e:
-            raise cast(e, StrategyClosingError)
+            raise StrategyClosingError(f"Error while closing strategy: {self.__class__}, "
+                                       f"look at the initial exception for more details.") + e
 
         # Closing components
         for component in self.strategy_components.values():
             try:
                 component.__close__()
             except Exception as e:
-                raise cast(e, StrategyComponentClosingError)
+                raise StrategyComponentClosingError(f"Error while closing strategy component: {component.__class__}, "
+                                                    f"look at the initial exception for more details.") + e
 
     def check_status(self):
         if self.worker_status == StrategyStatus.STOPPING:
