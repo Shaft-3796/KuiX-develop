@@ -80,7 +80,7 @@ class KxProcess:
     def register_strategy(self, name: str, import_path: str):
         # Import strategy
         try:
-            strategy = __import__(import_path, fromlist=[name])
+            strategy = getattr(__import__(import_path, fromlist=[name]), name)
         except Exception as e:
             raise KxProcessStrategyImportError(f"KxProcess {self.identifier} _register_strategy: "
                                                f"unable to import strategy at {import_path}, "
@@ -100,7 +100,10 @@ class KxProcess:
             if identifier in self.workers:
                 raise WorkerAlreadyExistsError(f"KxProcess {self.identifier} _create_worker: worker "
                                                f"'{identifier}' already exists.")
-            worker = self.strategies[strategy_name](identifier, config)
+            if config != {}:
+                worker = self.strategies[strategy_name](identifier, config)
+            else:
+                worker = self.strategies[strategy_name](identifier)
         except Exception as e:
             raise cast(e, e_type=WorkerInitError, msg=f"KxProcess {self.identifier} _create_worker: worker "
                                                       f"'{identifier}' failed to init.")
@@ -115,7 +118,7 @@ class KxProcess:
             if identifier not in self.workers:
                 raise WorkerNotFoundError(f"KxProcess {self.identifier} _start_worker: worker "
                                           f"'{identifier}' not found.")
-            self.workers[identifier].start()
+            self.workers[identifier].__start__()
         except Exception as e:
             raise cast(e, e_type=WorkerMethodCallError, msg=
             f"KxProcess {self.identifier} _start_worker: worker '{identifier}' "
@@ -128,7 +131,7 @@ class KxProcess:
             if identifier not in self.workers:
                 raise WorkerNotFoundError(f"KxProcess {self.identifier} _stop_worker: worker "
                                           f"'{identifier}' not found.")
-            self.workers[identifier].stop()
+            self.workers[identifier].__stop__()
         except Exception as e:
             raise cast(e, e_type=WorkerMethodCallError, msg=f"KxProcess {self.identifier} _stop_worker: worker "
                                                             f"'{identifier}' failed to stop.")
@@ -140,7 +143,7 @@ class KxProcess:
             if identifier not in self.workers:
                 raise WorkerNotFoundError(f"KxProcess {self.identifier} _start_worker: worker "
                                           f"'{identifier}' not found.")
-            self.workers[identifier].destruct()
+            self.workers[identifier].__destruct__()
             del self.workers[identifier]
         except Exception as e:
             raise cast(e, e_type=WorkerMethodCallError, msg=

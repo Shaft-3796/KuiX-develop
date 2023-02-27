@@ -152,8 +152,6 @@ class KuiX:
             raise ProcessAlreadyExists("Error while generating KuiX configuration")
 
         multiprocessing.Process(target=launch, args=(identifier, self.auth_key, self.ipc_host, self.ipc_port)).start()
-        # TODO: The process will be appended only with a connection event from the IPC server
-        # TODO: or maybe it can be done in a simpler way with a little shared state variable
 
     # --- STRATEGIES ---
     @Configured
@@ -211,7 +209,15 @@ class KuiX:
         :param kx_process_identifier: Identifier of the KX process to use.
         :param worker_identifier: Identifier of the worker.
         """
-        self.ipc_server.send_fire_and_forget(kx_process_identifier, "start_worker", {"identifier": worker_identifier})
+        try:
+            response = self.ipc_server.send_blocking_request(kx_process_identifier, "start_worker",
+                                                             {"identifier": worker_identifier})
+            if response["status"] == "error":
+                ex = deserialize(response["return"])
+                raise ex
+        except (SocketServerSendError, SocketServerCliIdentifierNotFound, WorkerNotFoundError, GenericException) as e:
+            raise e.add_ctx(f"Error from KuiX core while starting worker '{worker_identifier}' instanced on process "
+                            f"'{kx_process_identifier}'")
 
     @Configured
     def stop_worker(self, kx_process_identifier, worker_identifier: str):

@@ -16,6 +16,8 @@ def deserialize(e: dict):
     _e = globals()[e["type"]](e["base_msg"])
     _e.ctx = e["ctx"]
     _e.tracebacks = e["tracebacks"]
+    _e.initial_type = e["initial_type"]
+    _e.initial_msg = e["initial_msg"]
     return _e
 
 
@@ -118,9 +120,6 @@ def format_exception_stack(_e: Exception, color=C.RED, no_color=False):
         data += "\n"
     return data
 
-
-
-
 class GenericException(Exception):
 
     def __init__(self, msg: str = "An error occurred."):
@@ -133,6 +132,9 @@ class GenericException(Exception):
         self.tracebacks = []
         # Context
         self.ctx = []
+        # Initial exception to programmatically access the first exception raised
+        self.initial_type = None
+        self.initial_msg = None
 
     def __add__(self, _e: Exception):
         """
@@ -140,6 +142,8 @@ class GenericException(Exception):
         :return: self
         """
         self.tracebacks = dump_exception(_e)
+        self.initial_type = type(_e).__name__
+        self.initial_msg = str(_e)
         return self
 
     def add_ctx(self, ctx: str):
@@ -151,7 +155,9 @@ class GenericException(Exception):
             "type": type(self).__name__,
             "base_msg": self.base_msg,
             "tracebacks": self.tracebacks,
-            "ctx": self.ctx
+            "ctx": self.ctx,
+            "initial_type": self.initial_type,
+            "initial_msg": self.initial_msg,
         }
 
     def __str__(self):
