@@ -1,29 +1,3 @@
-"""
-This module implements an IPC server using sockets.
-
-Communication protocol:
-
-I-) FireAndForget request:
-    1) Client or server sends a request to an endpoint of the other party.
-    2) Client or server returns directly after sending the request.
-    3) The other party processes the request and can send another request if necessary.
-    request = {rtype: "FIRE_AND_FORGET", endpoint: "endpoint", data: {...}}
-
-II-) Blocking request:
-    1) Client or server sends a request to an endpoint of the other party, the sender add a unique id to the request.
-    2) Client or server locks on a new semaphore.
-    3) The other party processes the request and send the response on the id as endpoint.
-    4) Client or server socket threads unlock the semaphore.
-    5) Client or server request call unlocks and return the response
-    request = {rtype: "BLOCKING", endpoint: "endpoint", data: {...}, rid: "unique_id"}
-
-III-) Response:
-    1) Other party receives a blocking request on an endpoint.
-    2) Other party processes the request and send the response as a RESPONSE request with a "rid" field.
-    3) Client or server receives the response, save it, and release the lock.
-    4) Client or server initial blocking request call return the response.
-    request = {rtype: "RESPONSE", endpoint: "endpoint", data: {...}, rid: "unique_id"}
-"""
 from src.core.networking.SocketServer import SocketServer
 from src.core.Logger import LOGGER, CORE
 from src.core.Exceptions import *
@@ -41,6 +15,41 @@ class IpcServer(SocketServer):
 
     def __init__(self, auth_key: str, host: str = "localhost", port: int = 6969,
                  artificial_latency: float = 0.1):
+        """
+                Instance an ipc server used for inter process communication (IPC).
+                This server extends the SocketServer class and add the ability to register endpoints and send
+                requests to them.
+                :param auth_key: The key to authenticate clients.
+                :param port (optional): The port to connect on. Default is 6969.
+                :param host (optional): The host to connect  on. Default is localhost.
+                :param artificial_latency (optional): Time in s between each .recv call for a connection. Default is 0.1s.
+                This is used to prevent the CPU from being overloaded. Change this value if you know what you're doing.
+
+                Communication protocol:
+
+                I-) FireAndForget request:
+                1) Client or server sends a request to an endpoint of the other party.
+                2) Client or server returns directly after sending the request.
+                3) The other party processes the request and can send another request if necessary.
+                request = {rtype: "FIRE_AND_FORGET", endpoint: "endpoint", data: {...}}
+
+                II-) Blocking request:
+                1) Client or server sends a request to an endpoint of the other party, the sender add a unique id to the request.
+                2) Client or server locks on a new semaphore.
+                3) The other party processes the request and send the response with a "rid" field.
+                4) Client or server socket threads unlock the semaphore.
+                5) Client or server request call unlocks and return the response
+                request = {rtype: "BLOCKING", endpoint: "endpoint", data: {...}, rid: "unique_id"}
+
+                III-) Response:
+                1) Other party receives a blocking request on an endpoint.
+                2) Other party processes the request and send the response as a RESPONSE request with a "rid" field.
+                3) Client or server receives the response, save it, and release the lock.
+                4) Client or server initial blocking request call return the response.
+                request = {rtype: "RESPONSE", endpoint: "endpoint", data: {...}, rid: "unique_id"}
+
+                :raise SocketServerBindError: If the server fails to bind to the specified host and port.
+                """
         # Super call
         try:
             super().__init__(auth_key, host, port, artificial_latency)
@@ -59,6 +68,12 @@ class IpcServer(SocketServer):
 
     # Requests handler, triggered when a message is received
     def handle_request(self, identifier: str, data: dict):
+        """
+        Handle a request received from a client.
+        Automatically called when a message is received.
+        :param identifier: identifier of the client.
+        :param data: The data received from the client as a dict.
+        """
         try:
             # Fire and forget or blocking request
             if data["rtype"] == FIRE_AND_FORGET or data["rtype"] == BLOCKING:
@@ -99,20 +114,49 @@ class IpcServer(SocketServer):
 
     # Fire and forget
     def send_fire_and_forget_request(self, identifier: str, endpoint: str, data: dict):
+        """
+        Send data through a fire and forget request to a client.
+        This method will directly return after sending the request.
+        :param identifier: identifier of the client.
+        :param endpoint: endpoint as a str, this endpoint must be registered.
+        :param data: data to send as a dict.
+
+        :raise ClientIdentifierNotFound: If the client is not found. This can happen if the client is not connected
+        or is the identifier is wrong.
+        :raise SocketServerSendError: If the server fails to send the data, you can access the initial
+        exception type and msg by accessing 'initial_type' and 'initial_msg' attributes of the raised exception.
+        """
         try:
             self.send_data(identifier, {"rtype": FIRE_AND_FORGET, "endpoint": endpoint, "data": data})
-        except SocketServerCliIdentifierNotFound as e:
+        except SocketServerClientNotFound as e:
+            e = ClientIdentifierNotFoundError(f"Client identifier '{identifier}' is wrong, "
+                                              f"or client is not connected.") + e
             raise e.add_ctx(f"Ipc Server: error while sending a fire and forget "
-                            f"request, identifier not found, "
-                            f"request to client '{identifier}', "
-                            f"endpoint '{endpoint}'\nData: {data}")
+                            f"request, identifier not found,\n "
+                            f"request to client '{identifier}',\n "
+                            f"endpoint '{endpoint}',\nData: {data}")
         except SocketServerSendError as e:
             raise e.add_ctx(f"Ipc Server: error while sending a fire and forget "
-                            f"request to client '{identifier}', "
-                            f"endpoint '{endpoint}'\nData: {data}")
+                            f"request, identifier not found,\n "
+                            f"request to client '{identifier}',\n "
+                            f"endpoint '{endpoint}',\nData: {data}")
 
     # blocking request
     def send_blocking_request(self, identifier: str, endpoint: str, data: dict):
+        """
+        Send data through a blocking request to a client.
+        This method will block until the server send the response.
+        Warning, if the server doesn't send the response, this method will block forever.
+        Be sure to register the endpoint on the client side with a correct response.
+        :param identifier: identifier of the client.
+        :param endpoint: endpoint as a str, this endpoint must be registered.
+        :param data: data to send as a dict.
+
+        :raise ClientIdentifierNotFound: If the client is not found. This can happen if the client is not connected
+        or is the identifier is wrong.
+        :raise SocketServerSendError: If the server fails to send the data, you can access the initial
+        exception type and msg by accessing 'initial_type' and 'initial_msg' attributes of the raised exception.
+        """
         # Create a unique id for the request
         rid = str(uuid.uuid4())
         # Create a locked semaphore
@@ -124,15 +168,18 @@ class IpcServer(SocketServer):
         # Send the request
         try:
             self.send_data(identifier, {"rtype": BLOCKING, "endpoint": endpoint, "data": data, "rid": rid})
-        except SocketServerCliIdentifierNotFound as e:
-            raise e.add_ctx(f"Ipc Server: error while sending a blocking request, "
-                            f"identifier not found, "
-                            f"request to client '{identifier}', "
-                            f"endpoint '{endpoint}'\nData: {data}")
+        except SocketServerClientNotFound as e:
+            e = ClientIdentifierNotFoundError(f"Client identifier '{identifier}' is wrong, "
+                                              f"or client is not connected.") + e
+            raise e.add_ctx(f"Ipc Server: error while sending a blocking"
+                            f"request, identifier not found,\n "
+                            f"request to client '{identifier}',\n "
+                            f"endpoint '{endpoint}',\nData: {data}")
         except SocketServerSendError as e:
-            raise e.add_ctx(f"Ipc Server: error while sending a blocking "
-                            f"request to client '{identifier}', "
-                            f"endpoint '{endpoint}'\nData: {data}")
+            raise e.add_ctx(f"Ipc Server: error while sending a fire and forget "
+                            f"request, identifier not found,\n "
+                            f"request to client '{identifier}',\n "
+                            f"endpoint '{endpoint}',\nData: {data}")
         # Wait for the response
         semaphore.acquire()
         # Return the response
@@ -142,14 +189,33 @@ class IpcServer(SocketServer):
 
     # responses
     def send_response(self, identifier: str, endpoint: str, data: dict, rid: str):
+        """
+        Send response to a blocking request to a client.
+        This method will directly return after sending the response.
+        :param identifier: identifier of the client.
+        :param endpoint: endpoint as a str.
+        :param data: data to send as a dict.
+        :param rid: request id as a str, this id must be the same as the one received in the initial blocking request.
+
+        :raise ClientIdentifierNotFound: If the client is not found. This can happen if the client is not connected
+        or is the identifier is wrong.
+        :raise SocketServerSendError: If the server fails to send the data, you can access the initial
+        exception type and msg by accessing 'initial_type' and 'initial_msg' attributes of the raised exception.
+        """
         try:
             self.send_data(identifier, {"rtype": RESPONSE, "endpoint": endpoint, "data": data, "rid": rid})
-        except SocketServerCliIdentifierNotFound as e:
-            raise e.add_ctx(f"Ipc Server: error while sending a response request, "
-                            f"identifier not found, "
-                            f"request to client '{identifier}', "
-                            f"endpoint '{endpoint}'\nData: {data}")
+        except SocketServerClientNotFound as e:
+            e = ClientIdentifierNotFoundError(f"Client identifier '{identifier}' is wrong, "
+                                              f"or client is not connected.") + e
+            raise e.add_ctx(f"Ipc Server: error while sending a response"
+                            f"request, identifier not found,\n "
+                            f"request to client '{identifier}',\n "
+                            f"endpoint '{endpoint}',\nData: {data}")
         except SocketServerSendError as e:
-            raise e.add_ctx(f"Ipc Server: error while sending a response "
-                            f"request to client '{identifier}', "
-                            f"endpoint '{endpoint}'\nData: {data}")
+            raise e.add_ctx(f"Ipc Server: error while sending a response"
+                            f"request, identifier not found,\n "
+                            f"request to client '{identifier}',\n "
+                            f"endpoint '{endpoint}',\nData: {data}")
+
+# TODO: add register endpoint method.
+# TODO tell how to register endpoint when unknown endpoint is received, convert this to an error.

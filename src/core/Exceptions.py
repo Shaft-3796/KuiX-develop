@@ -120,6 +120,7 @@ def format_exception_stack(_e: Exception, color=C.RED, no_color=False):
         data += "\n"
     return data
 
+
 class GenericException(Exception):
 
     def __init__(self, msg: str = "An error occurred."):
@@ -174,6 +175,7 @@ class SocketServerBindError(GenericException):
 class SocketServerAcceptError(GenericException):
     pass
 
+
 class SocketServerClientNotFound(Exception):
     pass
 
@@ -219,6 +221,10 @@ class SocketClientEventCallbackError(GenericException):
 
 # Server
 class IpcServerRequestHandlerError(GenericException):
+    pass
+
+
+class ClientIdentifierNotFoundError(GenericException):
     pass
 
 

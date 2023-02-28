@@ -107,7 +107,7 @@ class SocketServer:
                     LOGGER.trace(f"IPC Server: Stopped accepting new connections", CORE)
             except Exception as e:
                 LOGGER.warning_exception(SocketServerAcceptError("Socket server encountered probably non critical "
-                                                                 "issues while accepting new connections, "
+                                                                 "issue while accepting new connections, "
                                                                  "look at the initial exception for more details.")
                                          + e, CORE)
 
@@ -265,10 +265,6 @@ class SocketServer:
         Triggers an event.
         :param callback: The callback to trigger.
         :param kwargs: Kwargs to pass to the callback.
-
-        :raises SocketServerEventCallbackError: If an error occurred while calling a callback, you can access
-        the initial exception type and msg by accessing 'initial_type' and 'initial_msg' attributes of the raised
-        exception.
         """
         for callback in callbacks:
             try:

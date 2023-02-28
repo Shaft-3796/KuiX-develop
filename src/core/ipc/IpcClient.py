@@ -1,31 +1,4 @@
-"""
-This module implements an IPC client using sockets.
-
-Communication protocol:
-
-I-) FireAndForget request:
-    1) Client or server sends a request to an endpoint of the other party.
-    2) Client or server returns directly after sending the request.
-    3) The other party processes the request and can send another request if necessary.
-    request = {rtype: "FIRE_AND_FORGET", endpoint: "endpoint", data: {...}}
-
-II-) Blocking request:
-    1) Client or server sends a request to an endpoint of the other party, the sender add a unique id to the request.
-    2) Client or server locks on a new semaphore.
-    3) The other party processes the request and send the response with a "rid" field.
-    4) Client or server socket threads unlock the semaphore.
-    5) Client or server request call unlocks and return the response
-    request = {rtype: "BLOCKING", endpoint: "endpoint", data: {...}, rid: "unique_id"}
-
-III-) Response:
-    1) Other party receives a blocking request on an endpoint.
-    2) Other party processes the request and send the response as a RESPONSE request with a "rid" field.
-    3) Client or server receives the response, save it, and release the lock.
-    4) Client or server initial blocking request call return the response.
-    request = {rtype: "RESPONSE", endpoint: "endpoint", data: {...}, rid: "unique_id"}
-"""
 from src.core.networking.SocketClient import SocketClient
-from src.core.Utils import Endpoint, BlockingEndpoint
 from src.core.Logger import LOGGER, CORE
 from src.core.Exceptions import *
 import threading
@@ -42,6 +15,42 @@ class IpcClient(SocketClient):
 
     def __init__(self, identifier: str, auth_key: str, host: str = "localhost", port: int = 6969,
                  artificial_latency: float = 0.1):
+        """
+        Instance an ipc client used for inter process communication (IPC).
+        This client extends the SocketClient class and add the ability to register endpoints and send requests to them.
+        :param identifier: The identifier of the client.
+        :param auth_key: The key to authenticate the client.
+        :param port (optional): The port to connect on. Default is 6969.
+        :param host (optional): The host to connect  on. Default is localhost.
+        :param artificial_latency (optional): Time in s between each .recv call for a connection. Default is 0.1s.
+        This is used to prevent the CPU from being overloaded. Change this value if you know what you're doing.
+
+        Communication protocol:
+
+        I-) FireAndForget request:
+        1) Client or server sends a request to an endpoint of the other party.
+        2) Client or server returns directly after sending the request.
+        3) The other party processes the request and can send another request if necessary.
+        request = {rtype: "FIRE_AND_FORGET", endpoint: "endpoint", data: {...}}
+
+        II-) Blocking request:
+        1) Client or server sends a request to an endpoint of the other party, the sender add a unique id to the request.
+        2) Client or server locks on a new semaphore.
+        3) The other party processes the request and send the response with a "rid" field.
+        4) Client or server socket threads unlock the semaphore.
+        5) Client or server request call unlocks and return the response
+        request = {rtype: "BLOCKING", endpoint: "endpoint", data: {...}, rid: "unique_id"}
+
+        III-) Response:
+        1) Other party receives a blocking request on an endpoint.
+        2) Other party processes the request and send the response as a RESPONSE request with a "rid" field.
+        3) Client or server receives the response, save it, and release the lock.
+        4) Client or server initial blocking request call return the response.
+        request = {rtype: "RESPONSE", endpoint: "endpoint", data: {...}, rid: "unique_id"}
+
+        :raise SocketClientConnectionError: If the client failed to connect to the server, you can access the initial
+        exception type and msg by accessing 'initial_type' and 'initial_msg' attributes of the raised exception.
+        """
         # Super call
         super().__init__(identifier, auth_key, host, port, artificial_latency)
         try:
@@ -62,6 +71,12 @@ class IpcClient(SocketClient):
 
     # Requests handler, triggered when a message is received
     def handle_request(self, identifier: str, data: dict):
+        """
+        Handle a request received from the server.
+        Automatically called when a message is received.
+        :param identifier: identifier of the client (same as self.identifier)
+        :param data: The data received from the server as a dict.
+        """
         try:
             # Fire and forget or blocking request
             if data["rtype"] == FIRE_AND_FORGET or data["rtype"] == BLOCKING:
@@ -103,6 +118,15 @@ class IpcClient(SocketClient):
 
     # Fire and forget
     def send_fire_and_forget_request(self, endpoint: str, data: dict):
+        """
+        Send data through a fire and forget request to the server.
+        This method will directly return after sending the request.
+        :param endpoint: endpoint as a str, this endpoint must be registered.
+        :param data: data to send as a dict.
+
+        :raise SocketClientSendError: If the client failed to send the request, you can access the initial
+        exception type and msg by accessing 'initial_type' and 'initial_msg' attributes of the raised exception.
+        """
         try:
             self.send_data({"rtype": FIRE_AND_FORGET, "endpoint": endpoint, "data": data})
         except SocketClientSendError as e:
@@ -112,6 +136,17 @@ class IpcClient(SocketClient):
 
     # blocking request
     def send_blocking_request(self, endpoint: str, data: dict):
+        """
+        Send data through a blocking request to the server.
+        This method will block until the server send the response.
+        Warning, if the server doesn't send the response, this method will block forever.
+        Be sure to register the endpoint on the server side with a correct response.
+        :param endpoint: endpoint as a str, this endpoint must be registered.
+        :param data: data to send as a dict.
+
+        :raise SocketClientSendError: If the client failed to send the request, you can access the initial
+        exception type and msg by accessing 'initial_type' and 'initial_msg' attributes of the raised exception.
+        """
         # Create a unique id for the request
         rid = str(uuid.uuid4())
         # Create a locked semaphore
@@ -136,9 +171,22 @@ class IpcClient(SocketClient):
 
     # responses
     def send_response(self, endpoint: str, data: dict, rid: str):
+        """
+        Send response to a blocking request to the server.
+        This method will directly return after sending the response.
+        :param endpoint: endpoint as a str.
+        :param data: data to send as a dict.
+        :param rid: request id as a str, this id must be the same as the one received in the initial blocking request.
+
+        :raise SocketClientSendError: If the client failed to send the request, you can access the initial
+        exception type and msg by accessing 'initial_type' and 'initial_msg' attributes of the raised exception.
+        """
         try:
             self.send_data({"rtype": RESPONSE, "endpoint": endpoint, "data": data, "rid": rid})
         except SocketClientSendError as e:
             raise e.add_ctx(f"Ipc Client '{self.identifier}: error while sending a response "
                             f"request to server', "
                             f"endpoint '{endpoint}'\nData: {data}")
+
+# TODO Add register endpoint method.
+# TODO tell how to register endpoint when unknown endpoint is received, convert this to an error.

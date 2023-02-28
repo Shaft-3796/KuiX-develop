@@ -25,27 +25,27 @@ class SocketClient:
     """
 
     # Constructor
-    def __init__(self, _identifier: str, auth_key: str, host: str = "localhost", port: int = 6969,
+    def __init__(self, identifier: str, auth_key: str, host: str = "localhost", port: int = 6969,
                  artificial_latency: float = 0.1):
         """
-        IPC server instantiation.
-        :param _identifier: The identifier of the server.
-        :param auth_key: The key used to authenticate clients.
-        :param port (optional): The port to listen on. Default is 6969.
-        :param host (optional): The host to listen on. Default is localhost. We don't recommend changing this.
+        Instance a socket client used for inter process communication (IPC).
+        :param identifier: The identifier of the client.
+        :param auth_key: The key to authenticate the client.
+        :param port (optional): The port to connect on. Default is 6969.
+        :param host (optional): The host to connect  on. Default is localhost.
         :param artificial_latency (optional): Time in s between each .recv call for a connection. Default is 0.1s.
-        This is used to prevent the CPU from being overloaded.
+        This is used to prevent the CPU from being overloaded. Change this value if you know what you're doing.
         """
         # Args
-        self.identifier = _identifier
+        self.identifier = identifier
         self.auth_key = auth_key
         self.host = host
         self.port = port
         self.artificial_latency = artificial_latency
 
         # Events
-        self.on_connection_accepted = [lambda identifier: threading.Thread(target=self.listen_for_connection,
-                                                                           name=identifier).start()]
+        self.on_connection_accepted = [lambda _identifier: threading.Thread(target=self.listen_for_connection,
+                                                                            name=_identifier).start()]
         self.on_connection_refused = []
         self.on_connection_closed = []
         self.on_client_closed = []
@@ -68,7 +68,10 @@ class SocketClient:
     # Connect to the server
     def connect(self):
         """
-        Connects to the server.
+        Connects the client to the server.
+
+        :raises SocketClientConnectionError: If the client failed to connect to the server, you can access the initial
+        exception type and msg by accessing 'initial_type' and 'initial_msg' attributes of the raised exception.
         """
         try:
             # Accept connection
@@ -91,13 +94,14 @@ class SocketClient:
                 self.__trigger__(self.on_connection_refused, identifier=authentication_payload["identifier"])
         except Exception as e:
             raise SocketClientConnectionError(f"Socket Client '{self.identifier}' failed to connect "
-                                              f"to {self.host}:{self.port}, look at the initial exception "
+                                              f"to server on {self.host}:{self.port}, look at the initial exception "
                                               f"for more details.") + e
 
     # Blocking call, handle requests from the server
     def listen_for_connection(self):
         """
-        Listens for the connection.
+        Listens the server connection, trigger the on_message_received event when a message is received.
+        This method is blocking and called automatically when the connection is accepted by the server.
         """
 
         def flush_buffer():
@@ -152,7 +156,9 @@ class SocketClient:
                     break
                 except Exception as e:
                     LOGGER.warning_exception(SocketClientListeningError(f"Socket Client '{self.identifier}'"
-                                                                        f": error while listening connection, look at "
+                                                                        f"encountered probably non critical "
+                                                                        "issue while listening server"
+                                                                        f"connection, look at"
                                                                         f"the initial"
                                                                         f"exception for more details.") + e, CORE)
 
@@ -170,8 +176,11 @@ class SocketClient:
     # Non blocking call, send given data to a specific connection
     def send_data(self, data: dict):
         """
-        Sends data to a connection with a specific identifier.
-        :param data: The data to send.
+        Sends data to the server.
+        :param data: The data to send as a dict.
+
+        :raises SocketClientSendError: If an error occurred while sending data to the server, you can access the initial
+        exception type and msg by accessing 'initial_type' and 'initial_msg' attributes of the raised exception.
         """
         connection = self.socket
         try:
@@ -187,7 +196,7 @@ class SocketClient:
     # Close the server
     def close(self):
         """
-        Closes the server.
+        Closes the socket client.
         """
         self.ipc_client_closed = True
         try:
@@ -205,8 +214,7 @@ class SocketClient:
         """
         Triggers an event.
         :param callback: The callback to trigger.
-        :param args: The args to pass to the callback.
-        :param kwargs: The kwargs to pass to the callback.
+        :param kwargs: Kwargs to pass to the callback.
         """
         for callback in callbacks:
             try:
@@ -215,7 +223,7 @@ class SocketClient:
                 LOGGER.warning_exception(SocketClientEventCallbackError(
                     f"Socket Client '{self.identifier}': error while triggering callback '{callback}' during an event, "
                     f"look at the initial exception for more details.") + e,
-                    CORE)
+                                         CORE)
 
     # --- Shortcuts to register events ---
     def register_on_connection_accepted(self, callback):
@@ -259,5 +267,3 @@ class SocketClient:
         :param callback: The callback to register.
         """
         self.on_client_closed.append(callback)
-
-# TODO: resume, complete docsrings and improve exceptions as did in the server

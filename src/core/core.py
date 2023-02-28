@@ -235,3 +235,5 @@ class KuiX:
         except (SocketServerSendError, SocketServerCliIdentifierNotFound, WorkerNotFoundError, GenericException) as e:
             raise e.add_ctx(f"Error from KuiX core while stopping worker '{worker_identifier}' instanced on process "
                             f"'{kx_process_identifier}'")
+
+# TODO: Add register endpoint method
