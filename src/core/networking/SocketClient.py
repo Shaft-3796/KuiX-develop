@@ -3,9 +3,10 @@ This module implements an IPC custom protocol using sockets.
 """
 import select
 import threading
+from json import JSONDecodeError
 
 from src.core.Exceptions import *
-from src.core.Logger import LOGGER, CORE
+from src.core.Logger import LOGGER, KX_PROCESS
 from src.core.Utils import EOT, IGNORE
 import socket
 import json
@@ -15,21 +16,14 @@ import time
 class SocketClient:
     """
     Implementation of a custom socket client used for IPC (Inter Process Communication).
-
-    Methods:
-        __init__(identifier, auth_key, host, port, artificial_latency)
-        Instance the server socket, do not raise any exception.
-
-        connect()
-
     """
 
     # Constructor
-    def __init__(self, identifier: str, auth_key: str, host: str = "localhost", port: int = 6969,
+    def __init__(self, _identifier: str, auth_key: str, host: str = "localhost", port: int = 6969,
                  artificial_latency: float = 0.1):
         """
         Instance a socket client used for inter process communication (IPC).
-        :param identifier: The identifier of the client.
+        :param _identifier: The identifier of the client.
         :param auth_key: The key to authenticate the client.
         :param port (optional): The port to connect on. Default is 6969.
         :param host (optional): The host to connect  on. Default is localhost.
@@ -37,15 +31,15 @@ class SocketClient:
         This is used to prevent the CPU from being overloaded. Change this value if you know what you're doing.
         """
         # Args
-        self.identifier = identifier
+        self.identifier = _identifier
         self.auth_key = auth_key
         self.host = host
         self.port = port
         self.artificial_latency = artificial_latency
 
         # Events
-        self.on_connection_accepted = [lambda _identifier: threading.Thread(target=self.listen_for_connection,
-                                                                            name=_identifier).start()]
+        self.on_connection_accepted = [lambda identifier: threading.Thread(target=self.listen_for_connection,
+                                                                           name=identifier).start()]
         self.on_connection_refused = []
         self.on_connection_closed = []
         self.on_client_closed = []
@@ -61,7 +55,7 @@ class SocketClient:
         self.ipc_client_closed = False
 
         LOGGER.trace(f"Socket Client {self.identifier} : client fully instanced and ready to connect on "
-                     f"{self.host}:{self.port}", CORE)
+                     f"{self.host}:{self.port}", KX_PROCESS)
 
     # --- Low level methods ---
 
@@ -76,7 +70,7 @@ class SocketClient:
         try:
             # Accept connection
             self.socket.connect((self.host, self.port))
-            LOGGER.trace(f"IPC Client {self.identifier} : connected to the server, sending auth request", CORE)
+            LOGGER.trace(f"IPC Client {self.identifier} : connected to the server, sending auth request", KX_PROCESS)
 
             # Authentication
             authentication_payload = {"identifier": self.identifier, "key": self.auth_key}
@@ -87,10 +81,10 @@ class SocketClient:
 
             if data["status"] == "valid":
                 # Connection validated
-                LOGGER.trace(f"IPC Client {self.identifier} : Server validated creds.", CORE)
+                LOGGER.trace(f"IPC Client {self.identifier} : Server validated creds.", KX_PROCESS)
                 self.__trigger__(self.on_connection_accepted, identifier=authentication_payload["identifier"])
             else:
-                LOGGER.trace(f"IPC Client {self.identifier}: Server invalidated creds: ", CORE)
+                LOGGER.trace(f"IPC Client {self.identifier}: Server invalidated creds: ", KX_PROCESS)
                 self.__trigger__(self.on_connection_refused, identifier=authentication_payload["identifier"])
         except Exception as e:
             raise SocketClientConnectionError(f"Socket Client '{self.identifier}' failed to connect "
@@ -106,7 +100,7 @@ class SocketClient:
 
         def flush_buffer():
             nonlocal buffer
-            LOGGER.trace(f"IPC Client  {self.identifier} : Flushing buffer, buffer: {buffer}", CORE)
+            LOGGER.trace(f"IPC Client  {self.identifier} : Flushing buffer, buffer: {buffer}", KX_PROCESS)
             # Check if the request is a ping from the server
             if buffer != IGNORE:
                 self.__trigger__(self.on_message_received, identifier=self.identifier,
@@ -135,7 +129,7 @@ class SocketClient:
 
                         LOGGER.trace(
                             f"IPC Client  {self.identifier} : Received data from server: {data.decode('utf-8')}",
-                            CORE)
+                            KX_PROCESS)
 
                         # Buffering data
                         for byte in data:
@@ -154,22 +148,25 @@ class SocketClient:
                 except OSError or socket.timeout:
                     connection_closed = True
                     break
+                except JSONDecodeError:
+                    LOGGER.warning(f"Socket Client {self.identifier}: Received invalid JSON data from server, "
+                                   f"buffer: {buffer.decode('utf-8')}", KX_PROCESS)
                 except Exception as e:
-                    LOGGER.warning_exception(SocketClientListeningError(f"Socket Client '{self.identifier}'"
+                    LOGGER.warning_exception(SocketClientListeningError(f"Socket Client '{self.identifier}' "
                                                                         f"encountered probably non critical "
-                                                                        "issue while listening server"
-                                                                        f"connection, look at"
-                                                                        f"the initial"
-                                                                        f"exception for more details.") + e, CORE)
+                                                                        "issue while listening server "
+                                                                        f"connection, look at "
+                                                                        f"the initial "
+                                                                        f"exception for more details.") + e, KX_PROCESS)
 
             time.sleep(self.artificial_latency)  # Artificial latency for optimization purposes
 
         if connection_closed:
-            LOGGER.info(f"Socket Client  '{self.identifier}' : Connection closed by the server.", CORE)
+            LOGGER.info(f"Socket Client  '{self.identifier}' : Connection closed by the server.", KX_PROCESS)
             connection.close()
             self.__trigger__(self.on_connection_closed, identifier=self.identifier, from_client=False)
         else:
-            LOGGER.info(f"Socket Client  '{self.identifier}' : Connection closed by client.", CORE)
+            LOGGER.info(f"Socket Client  '{self.identifier}' : Connection closed by client.", KX_PROCESS)
             connection.close()
             self.__trigger__(self.on_connection_closed, identifier=self.identifier, from_client=True)
 
@@ -185,7 +182,7 @@ class SocketClient:
         connection = self.socket
         try:
             connection.sendall(json.dumps(data).encode("utf-8") + bytes([int(EOT, 16)]))
-            LOGGER.trace(f"IPC Client {self.identifier} : Sent data to server: {data}", CORE)
+            LOGGER.trace(f"IPC Client {self.identifier} : Sent data to server: {data}", KX_PROCESS)
             self.__trigger__(self.on_message_sent, identifier=self.identifier, data=data)
         except Exception as e:
             raise SocketClientSendError(f"Socket Client '{self.identifier}': "
@@ -206,8 +203,8 @@ class SocketClient:
                                          f"error while closing connection, look at the initial exception "
                                          f"for more details.") + e
 
-        LOGGER.trace(f"IPC Client {self.identifier} : Client closed.", CORE)
-        self.__trigger__(self.on_client_closed)
+        LOGGER.trace(f"IPC Client {self.identifier} : Client closed.", KX_PROCESS)
+        self.__trigger__(self.on_client_closed, identifier=self.identifier)
 
     # Trigger an event
     def __trigger__(self, callbacks: list, **kwargs):
@@ -223,7 +220,7 @@ class SocketClient:
                 LOGGER.warning_exception(SocketClientEventCallbackError(
                     f"Socket Client '{self.identifier}': error while triggering callback '{callback}' during an event, "
                     f"look at the initial exception for more details.") + e,
-                                         CORE)
+                                         KX_PROCESS)
 
     # --- Shortcuts to register events ---
     def register_on_connection_accepted(self, callback):

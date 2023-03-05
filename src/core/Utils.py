@@ -96,3 +96,21 @@ def BlockingEndpoint(_endpoint: str):
         return function
 
     return decorator
+
+
+# Decorator used for blocking requests to automatically send the response returned by the callback
+def Respond(_endpoint: str):
+    """
+    Decorator used for blocking requests to automatically send the response returned by the callback
+    :param _endpoint: name of the endpoint
+    :return: the decorated function
+    """
+
+    def decorator(function):
+
+        def wrapper(self, rid, data):
+            self.send_response(_endpoint, function(self, rid, data), rid)
+
+        return wrapper
+
+    return decorator

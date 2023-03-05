@@ -43,7 +43,7 @@ class DebugStrategyComponent(BaseStrategyComponent):
     def __stop__(self):
         LOGGER.info(f"DebugStrategyComponent for worker {self.worker.identifier} stopped.", STRATEGY_COMP)
 
-    # To override, called to destruct the component
+    # To override, called to close the component
     def __close__(self):
         LOGGER.info(f"DebugStrategyComponent for worker {self.worker.identifier} closed.", STRATEGY_COMP)
 

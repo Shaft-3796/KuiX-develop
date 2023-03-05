@@ -3,6 +3,7 @@ This module implements an IPC custom protocol using sockets.
 """
 import select
 import threading
+from json import JSONDecodeError
 from typing import Callable
 
 from src.core.Exceptions import *
@@ -174,6 +175,9 @@ class SocketServer:
                         except socket.error:
                             connection_closed = True
                             break
+                except JSONDecodeError:
+                    LOGGER.warning(f"Socket Server: Received invalid JSON data from client '{identifier}', "
+                                   f"buffer: {buffer.decode('utf-8')}", CORE)
                 except socket.timeout or OSError:
                     connection_closed = True
                     break

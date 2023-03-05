@@ -219,6 +219,22 @@ class SocketClientEventCallbackError(GenericException):
 
 # --- IPC ---
 
+class UnknownEndpoint(Exception):
+    pass
+
+
+class UnknownRid(Exception):
+    pass
+
+
+class UnknownRequestType(Exception):
+    pass
+
+
+class EventSubscriptionError(Exception):
+    pass
+
+
 # Server
 class IpcServerRequestHandlerError(GenericException):
     pass
@@ -234,6 +250,13 @@ class IpcClientRequestHandlerError(GenericException):
 
 
 # --- PROCESS ---
+class KxProcessComponentImportError(GenericException):
+    pass
+
+
+class KxProcessComponentInitError(GenericException):
+    pass
+
 
 class KxProcessStrategyImportError(GenericException):
     pass
@@ -301,6 +324,14 @@ class CoreSetupError(GenericException):
     pass
 
 
+class CoreConfigLoadError(GenericException):
+    pass
+
+
+class CoreConfigGenerationError(GenericException):
+    pass
+
+
 class CoreNotConfigured(Exception):
     pass
 
@@ -309,9 +340,19 @@ class ProcessAlreadyExists(Exception):
     pass
 
 
+class ProcessNotFound(Exception):
+    pass
+
+
+class ProcessLaunchError(Exception):
+    pass
+
+
 class StrategyAlreadyRegistered(Exception):
     pass
 
+class ProcessComponentAlreadyRegistered(Exception):
+    pass
 
 class StrategyNotRegistered(Exception):
     pass

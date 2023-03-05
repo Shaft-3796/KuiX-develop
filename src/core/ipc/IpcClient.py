@@ -1,5 +1,5 @@
 from src.core.networking.SocketClient import SocketClient
-from src.core.Logger import LOGGER, CORE
+from src.core.Logger import LOGGER, KX_PROCESS
 from src.core.Exceptions import *
 import threading
 import time
@@ -10,7 +10,6 @@ FIRE_AND_FORGET = "FIRE_AND_FORGET"
 BLOCKING = "BLOCKING"
 RESPONSE = "RESPONSE"
 
-
 class IpcClient(SocketClient):
 
     def __init__(self, identifier: str, auth_key: str, host: str = "localhost", port: int = 6969,
@@ -20,33 +19,10 @@ class IpcClient(SocketClient):
         This client extends the SocketClient class and add the ability to register endpoints and send requests to them.
         :param identifier: The identifier of the client.
         :param auth_key: The key to authenticate the client.
-        :param port (optional): The port to connect on. Default is 6969.
-        :param host (optional): The host to connect  on. Default is localhost.
-        :param artificial_latency (optional): Time in s between each .recv call for a connection. Default is 0.1s.
-        This is used to prevent the CPU from being overloaded. Change this value if you know what you're doing.
-
-        Communication protocol:
-
-        I-) FireAndForget request:
-        1) Client or server sends a request to an endpoint of the other party.
-        2) Client or server returns directly after sending the request.
-        3) The other party processes the request and can send another request if necessary.
-        request = {rtype: "FIRE_AND_FORGET", endpoint: "endpoint", data: {...}}
-
-        II-) Blocking request:
-        1) Client or server sends a request to an endpoint of the other party, the sender add a unique id to the request.
-        2) Client or server locks on a new semaphore.
-        3) The other party processes the request and send the response with a "rid" field.
-        4) Client or server socket threads unlock the semaphore.
-        5) Client or server request call unlocks and return the response
-        request = {rtype: "BLOCKING", endpoint: "endpoint", data: {...}, rid: "unique_id"}
-
-        III-) Response:
-        1) Other party receives a blocking request on an endpoint.
-        2) Other party processes the request and send the response as a RESPONSE request with a "rid" field.
-        3) Client or server receives the response, save it, and release the lock.
-        4) Client or server initial blocking request call return the response.
-        request = {rtype: "RESPONSE", endpoint: "endpoint", data: {...}, rid: "unique_id"}
+        :param port: The port to connect on. Default is 6969.
+        :param host: The host to connect  on. Default is localhost.
+        :param artificial_latency: Time in s between each .recv call for a connection. Default is 0.1s. This is used to
+        prevent the CPU from being overloaded. Change this value if you know what you're doing.
 
         :raise SocketClientConnectionError: If the client failed to connect to the server, you can access the initial
         exception type and msg by accessing 'initial_type' and 'initial_msg' attributes of the raised exception.
@@ -82,11 +58,19 @@ class IpcClient(SocketClient):
             if data["rtype"] == FIRE_AND_FORGET or data["rtype"] == BLOCKING:
                 ep = self.endpoints if data["rtype"] == FIRE_AND_FORGET else self.blocking_endpoints
                 if data["endpoint"] not in ep:
-                    LOGGER.error(f"IPC Client {identifier}: received unknown endpoint '{data['endpoint']}'\n-> "
-                                 f"If the request was a blocking request, this error will lead to an infinite "
-                                 f"function call !'",
-                                 CORE)
+                    if data["rtype"] == BLOCKING:
+                        e = UnknownEndpoint(f"IPC Client {identifier}: received a request to '{data['endpoint']}' "
+                                            f"but this endpoint"
+                                            f" is not registered as a blocking endpoint !\nWarning, because this "
+                                            f"endpoint is a blocking endpoint, this will lead to an infinite function\n"
+                                            f"call with unexpected behavior and performances issues")
+                        LOGGER.error_exception(e, KX_PROCESS)
+                    if data["rtype"] == FIRE_AND_FORGET:
+                        e = UnknownEndpoint(f"IPC Client {identifier}: received a request to '{data['endpoint']} "
+                                            f"but this endpoint is not registered !")
+                        LOGGER.error_exception(e, KX_PROCESS)
                     return
+
                 ep[data["endpoint"]](data["data"]) if data["rtype"] == FIRE_AND_FORGET \
                     else ep[data["endpoint"]](data["rid"], data["data"])
 
@@ -96,23 +80,35 @@ class IpcClient(SocketClient):
                     if data["rid"] not in self.blocking_requests:
                         time.sleep(0.2)
                 if data["rid"] not in self.blocking_requests:
-                    LOGGER.warning(f"IPC Client {identifier}: received unknown rid, endpoint '{data['endpoint']}'"
-                                   f"\nRequest: {data}", CORE)
+                    e = UnknownRid(f"IPC Client {identifier}: received a response to a request with an unknown rid.\n"
+                                   f"When the client send a blocking request, it add a field 'rid' to the request, \n"
+                                   f"when the server response through the 'send_response' method, the same rid have \n"
+                                   f"to be included int the response request.\n This error will lead to an infinite "
+                                   f"function call and unexpected behavior.")
+                    LOGGER.error_exception(e, KX_PROCESS)
                     return
                 self.blocking_requests[data["rid"]][1] = data["data"]
                 self.blocking_requests[data["rid"]][0].release()
 
             # Unknown request type
             else:
-                LOGGER.warning(f"IPC Client {identifier}: received unknown request type: {data['rtype']}",
-                               CORE)
+                e = UnknownRequestType(f"IPC Client {identifier}: received unknown request type: '{data['rtype']}'.\n"
+                                       f"Only 'FIRE_AND_FORGET', 'BLOCKING' and 'RESPONSE' are allowed.")
+                LOGGER.error_exception(e, KX_PROCESS)
 
+        except KeyError as e:
+            LOGGER.error_exception(IpcClientRequestHandlerError(f"IPC Client '{identifier}': error while handling a "
+                                                                f"request from server.\n"
+                                                                f"A field is missing in your request !\n"
+                                                                f"Request: {data}, \n"
+                                                                f"look at the initial exception for more details.") + e,
+                                   KX_PROCESS)
         except Exception as e:
             LOGGER.error_exception(IpcClientRequestHandlerError(f"IPC Client '{identifier}': error while "
                                                                 f"handling a request from server.'\n"
                                                                 f"Request: {data}, "
                                                                 f"look at the initial exception for more details.") + e,
-                                   CORE)
+                                   KX_PROCESS)
 
     # --- Sending ---
 
@@ -187,6 +183,3 @@ class IpcClient(SocketClient):
             raise e.add_ctx(f"Ipc Client '{self.identifier}: error while sending a response "
                             f"request to server', "
                             f"endpoint '{endpoint}'\nData: {data}")
-
-# TODO Add register endpoint method.
-# TODO tell how to register endpoint when unknown endpoint is received, convert this to an error.

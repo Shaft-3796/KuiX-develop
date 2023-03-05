@@ -79,10 +79,17 @@ class IpcServer(SocketServer):
             if data["rtype"] == FIRE_AND_FORGET or data["rtype"] == BLOCKING:
                 ep = self.endpoints if data["rtype"] == FIRE_AND_FORGET else self.blocking_endpoints
                 if data["endpoint"] not in ep:
-                    LOGGER.warning(f"IPC Server: received unknown endpoint '{data['endpoint']}'\n-> "
-                                   f"If the request was a blocking request, this error will lead to an infinite "
-                                   f"function call !'",
-                                   CORE)
+                    if data["rtype"] == BLOCKING:
+                        e = UnknownEndpoint(f"IPC Server: received a request from client '{identifier}' to "
+                                            f"'{data['endpoint']} but this endpoint"
+                                            f" is not registered as a blocking endpoint !\nWarning, because this "
+                                            f"endpoint is a blocking endpoint, this will lead to an infinite function\n"
+                                            f"call with unexpected behavior and performances issues")
+                        LOGGER.error_exception(e, CORE)
+                    if data["rtype"] == FIRE_AND_FORGET:
+                        e = UnknownEndpoint(f"IPC Server: received a request from client '{identifier}' to "
+                                            f"'{data['endpoint']} but this endpoint is not registered !")
+                        LOGGER.error_exception(e, CORE)
                     return
                 ep[data["endpoint"]](identifier, data["data"]) if data["rtype"] == FIRE_AND_FORGET \
                     else ep[data["endpoint"]](identifier, data["rid"], data["data"])
@@ -93,20 +100,34 @@ class IpcServer(SocketServer):
                     if data["rid"] not in self.blocking_requests:
                         time.sleep(0.2)
                 if data["rid"] not in self.blocking_requests:
-                    LOGGER.warning(f"IPC Server: received unknown rid, endpoint '{data['endpoint']}' from "
-                                   f"{identifier}\nRequest: {data}", CORE)
+                    e = UnknownRid(f"IPC Server: received a response from client '{identifier}' to a request with an "
+                                   f"unknown rid.\n"
+                                   f"When the client send a blocking request, it add a field 'rid' to the request, \n"
+                                   f"when the server response through the 'send_response' method, the same rid have \n"
+                                   f"to be included int the response request.\n This error will lead to an infinite "
+                                   f"function call and unexpected behavior.")
+                    LOGGER.error_exception(e, CORE)
                     return
                 self.blocking_requests[data["rid"]][1] = data["data"]
                 self.blocking_requests[data["rid"]][0].release()
 
             # Unknown request type
             else:
-                LOGGER.warning(f"IPC Server: received unknown request type: {data['rtype']} from {identifier}",
-                               CORE)
+                e = UnknownRequestType(f"IPC Server: received unknown request type: '{data['rtype']}' "
+                                       f"from client '{identifier}'.\n"
+                                       f"Only 'FIRE_AND_FORGET', 'BLOCKING' and 'RESPONSE' are allowed.")
+                LOGGER.error_exception(e, CORE)
 
+        except KeyError as e:
+            LOGGER.error_exception(IpcClientRequestHandlerError(f"IPC Server': error while handling a "
+                                                                f"request from from client '{identifier}'.\n"
+                                                                f"A field is missing in your request !\n"
+                                                                f"Request: {data}, \n"
+                                                                f"look at the initial exception for more details.") + e,
+                                   CORE)
         except Exception as e:
             LOGGER.error_exception(IpcServerRequestHandlerError(f"Ipc Server: error while handling a "
-                                                                f"request from client '{identifier}, "
+                                                                f"request from client '{identifier}', "
                                                                 f"look at the initial exception for more details.'\n"
                                                                 f"Request: {data}") + e, CORE)
 

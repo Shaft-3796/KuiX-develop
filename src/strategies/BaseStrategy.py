@@ -5,7 +5,7 @@ There is also an implementation of a debug strategy.
 from abc import abstractmethod
 
 from src.core.Exceptions import *
-from src.strategy_components.BaseStrategyComponent import DebugStrategyComponent
+from src.strategy_components.BaseStrategyComponent import DebugStrategyComponent, BaseStrategyComponent
 from src.core.Logger import LOGGER, STRATEGY
 import dataclasses
 import threading
@@ -30,14 +30,20 @@ class BaseStrategy:
 
         self.thread = None  # Worker thread
         self.worker_status = StrategyStatus.STOPPED  # Worker status
-        self.strategy_components = {}  # All strategy components
+        self.components = {}  # All strategy components
 
     def add_component(self, name, component):
-        self.strategy_components[name] = component
+        if not isinstance(component, BaseStrategyComponent):
+            LOGGER.warning(
+                f"Worker {self.identifier} of strategy {self.__class__} tried to add a component that is not "
+                f"an instance of BaseStrategyComponent. This can lead to unexpected behaviours, inheritance "
+                f"from BaseStrategyComponent is recommended.")
+        self.components[name] = component
+        return component
 
     # --- Core ---
     def __open__(self):
-        for component in self.strategy_components.values():
+        for component in self.components.values():
             try:
                 component.__open__()
             except Exception as e:
@@ -49,7 +55,7 @@ class BaseStrategy:
         if self.thread is not None:
             raise WorkerAlreadyStarted("Worker is already started or still running.")
         # Starting components
-        for component in self.strategy_components.values():
+        for component in self.components.values():
             try:
                 component.__start__()
             except Exception as e:
@@ -85,7 +91,7 @@ class BaseStrategy:
             timer += 0.1
         self.thread = None
         # Stopping components
-        for component in self.strategy_components.values():
+        for component in self.components.values():
             try:
                 component.__stop__()
             except Exception as e:
@@ -112,7 +118,7 @@ class BaseStrategy:
                                        f"look at the initial exception for more details.") + e
 
         # Closing components
-        for component in self.strategy_components.values():
+        for component in self.components.values():
             try:
                 component.__close__()
             except Exception as e:
@@ -148,7 +154,7 @@ class DebugStrategy(BaseStrategy):
         # Add a component
         self.add_component("debug", DebugStrategyComponent(self))
         # Shortcuts
-        self.debug = self.strategy_components["debug"]
+        self.debug = self.components["debug"]
 
     # The strategy
     def strategy(self):
